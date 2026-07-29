@@ -54,6 +54,38 @@ O servidor MCP (autoria de agentes via Claude Code/skill) fica em
 `http://<host>:8100/mcp` — habilite com `MCP_ENABLED=true` e preencha
 `MCP_ALLOWED_TENANT_IDS` no `.env.sandbox` antes de usar.
 
+## Instalação via painéis (Dokploy, Coolify, EasyPanel)
+
+Se o servidor já roda um painel de deploy, você não precisa do `install.sh` —
+o painel assume o papel dele. O kit é compose pull-only, exatamente o formato
+que essas ferramentas consomem:
+
+1. Crie um serviço do tipo **Docker Compose** apontando para este repositório
+   (`https://github.com/tbc-servicos/agenteos-kit`), arquivo
+   `docker-compose.prod.yml`. Para a sandbox, um segundo serviço com
+   `docker-compose.sandbox.yml`.
+2. Cole as variáveis do `.env.example` na tela de environment do painel,
+   **gerando segredos reais** (instruções em cada linha do arquivo). Segredo
+   com valor placeholder não sobe — o primeiro boot recusa e lista as
+   variáveis pendentes.
+3. Não esqueça `COMPOSE_PROFILES=runtime,hitl,evaluator` na environment — sem
+   ele a stack sobe sem workers e nenhuma execução roda.
+4. Deploy. Não há `build:` no kit — o painel só faz pull das imagens.
+5. **Token do Hatchet** (uma vez): use o terminal de container do painel para
+   rodar os 2 comandos da seção "Token do Hatchet" acima, grave o valor em
+   `HATCHET_CLIENT_TOKEN` na environment e redeploye apenas os 4 serviços
+   `*-worker` (nunca recrie o `hatchet` junto).
+
+Notas por ferramenta:
+
+- **Dokploy**: exponha o painel via porta do nginx (`HTTP_PORT`) ou aponte o
+  proxy (Traefik/NPM) para o serviço `nginx` interno. Nunca rode deploy que
+  recrie o container `hatchet` isoladamente.
+- **Coolify**: marque o serviço `nginx` para receber o domínio/TLS automático
+  (porta interna 80).
+- **EasyPanel**: suporte a compose é mais limitado; se travar, o caminho
+  `install.sh` via SSH funciona em qualquer VPS e ignora o painel.
+
 ## Upgrade
 
 Os serviços da aplicação usam `pull_policy: always`: **todo `docker compose up -d`
