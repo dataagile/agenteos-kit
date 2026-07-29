@@ -1,0 +1,10 @@
+# /config.json — servido no server block APP (tenant), NÃO no admin (D-05).
+# Interstitial de redirect de superadmin no apps/web busca isto em runtime —
+# nginx vira a única fonte do ADMIN_SERVER_NAME (substitui VITE_ var baked no
+# build, quebrada pra imagem promovível entre ambientes). Gerado via envsubst
+# no boot do container (mesmo mecanismo do server block admin).
+location = /config.json {
+    default_type application/json;
+    add_header Cache-Control "no-cache" always;
+    return 200 '{"adminUrl": "https://${ADMIN_SERVER_NAME}"}';
+}

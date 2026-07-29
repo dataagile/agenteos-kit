@@ -1,0 +1,104 @@
+# Prometheus Alert Rules — E01 §5.4
+# 5 alertas obrigatórios: ServiceDown, HighErrorRate, HighLatency,
+# PostgresConnSaturation, DiskUsage.
+
+groups:
+  - name: agenteos.platform
+    interval: 30s
+    rules:
+      # ── ServiceDown ──────────────────────────────────────────────────────
+      # Healthcheck (up metric) falha por >2min → critical.
+      # `up` é setado para 0 pelo Prometheus quando o scrape falha.
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Serviço {{ $labels.job }} está DOWN"
+          description: >
+            O target {{ $labels.instance }} (job={{ $labels.job }}) não está
+            respondendo ao scrape do Prometheus há mais de 2 minutos.
+          runbook_url: "https://github.com/tbc-servicos/AgenteOS/blob/main/infra/runbooks/rollback-deploy-prod.md"
+
+      # ── HighErrorRate ────────────────────────────────────────────────────
+      # Taxa de erros 5xx > 5% em janela de 5min → warning.
+      - alert: HighErrorRate
+        expr: >
+          (
+            sum by (service) (
+              rate(http_requests_total{status_code=~"5.."}[5m])
+            )
+            /
+            sum by (service) (
+              rate(http_requests_total[5m])
+            )
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Taxa de erros 5xx alta em {{ $labels.service }}"
+          description: >
+            Serviço {{ $labels.service }}: taxa de erros HTTP 5xx está em
+            {{ $value | humanizePercentage }} nos últimos 5 minutos (limiar: 5%).
+
+      # ── HighLatency ──────────────────────────────────────────────────────
+      # p95 de latência > 10s por 5min → warning.
+      - alert: HighLatency
+        expr: >
+          histogram_quantile(
+            0.95,
+            sum by (service, le) (
+              rate(http_request_duration_seconds_bucket[5m])
+            )
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alta latência (p95) em {{ $labels.service }}"
+          description: >
+            Serviço {{ $labels.service }}: latência no percentil 95 está em
+            {{ $value | humanizeDuration }} nos últimos 5 minutos (limiar: 10s).
+
+      # ── PostgresConnSaturation ───────────────────────────────────────────
+      # Conexões ativas > 80% do max_connections → warning.
+      - alert: PostgresConnSaturation
+        expr: >
+          (
+            pg_stat_activity_count{state!="idle"}
+            /
+            pg_settings_max_connections
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Saturação de conexões Postgres ({{ $value | humanizePercentage }})"
+          description: >
+            Conexões ativas no Postgres atingiram {{ $value | humanizePercentage }}
+            do máximo configurado (max_connections). Avaliar PgBouncer session-mode.
+          runbook_url: "https://github.com/tbc-servicos/AgenteOS/blob/main/infra/runbooks/postgres-conexoes-saturadas.md"
+
+      # ── DiskUsage ────────────────────────────────────────────────────────
+      # Uso de disco > 80% → warning.
+      - alert: DiskUsage
+        expr: >
+          (
+            1 - (
+              node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|overlay"}
+              /
+              node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|overlay"}
+            )
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso de disco alto em {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: >
+            Uso de disco em {{ $labels.mountpoint }} está em
+            {{ $value | humanizePercentage }} (limiar: 80%).
+            Verificar retenção do Loki e limpeza de imagens Docker antigas.
+          runbook_url: "https://github.com/tbc-servicos/AgenteOS/blob/main/infra/runbooks/loki-disk-esgotado.md"

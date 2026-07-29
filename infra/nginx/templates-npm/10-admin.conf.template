@@ -1,0 +1,59 @@
+# Server block ADMIN — variante NPM/Cloudflare (D-05, 002-isolamento-painel-admin).
+# TLS termina no NPM/CF (fora deste container); aqui só HTTP :80, mesmo
+# padrão do server block APP existente em nginx.npm.conf (resolver dinâmico
+# via `set` + `resolver 127.0.0.11`, evita cache de IP do Docker embedded DNS
+# no boot do nginx). Gerado via envsubst no boot do container (entrypoint
+# padrão nginx:alpine, template dir separado — ver docker-compose.deploy.yml).
+#
+# Contrato completo: _reversa_forward/002-isolamento-painel-admin/interfaces/nginx-routing.md
+#
+# ATENÇÃO OPS: server_name é o ÚNICO separador entre tráfego admin e tráfego
+# app chegando no mesmo container atrás do NPM — sem ADMIN_SERVER_NAME setado
+# pro host real que o NPM encaminha, admin cai no bloco app (server_name _) e
+# RF-03 falha na prática. Placeholder default "admin.localhost" é só pra dev;
+# staging/prod devem setar ADMIN_SERVER_NAME=admin.<domínio-do-produto>.
+server {
+    listen 80;
+    server_name ${ADMIN_SERVER_NAME};
+
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # Regra #2 do contrato: /api/v1/platform/ (longest-prefix) ANTES de /api/.
+    location /api/v1/platform/ {
+        set $pc_upstream "platform-console";
+        proxy_pass http://$pc_upstream:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Request-ID $req_id;
+        proxy_read_timeout 300s;
+        proxy_redirect ~^http://([^/]+)/(.*)$ https://$1/$2;
+    }
+
+    # Login/refresh (/api/v1/auth/*) e demais rotas de auth continuam no
+    # api_gateway — regra #2 do contrato (console não duplica auth).
+    location /api/ {
+        set $api_upstream "api-gateway";
+        proxy_pass http://$api_upstream:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Request-ID $req_id;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 300s;
+        proxy_redirect ~^http://([^/]+)/(.*)$ https://$1/$2;
+    }
+
+    # Dist do console-web — volume próprio (console_web_dist), NUNCA o mesmo
+    # volume do SPA de tenants (regra #7 do contrato).
+    location / {
+        root /usr/share/nginx/console;
+        try_files $uri $uri/ /index.html;
+    }
+}

@@ -1,0 +1,977 @@
+# GERADO por scripts/gen_distrib.py — NÃO editar à mão. Fonte: docker-compose.dokploy.yml
+name: agenteos-sandbox
+x-restart:
+  restart: unless-stopped
+x-app-env:
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DEBUG: ${DEBUG:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_RELEASE: ${SOURCE_REF:-}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+    POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+  LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+  INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+x-app-deps:
+  db-migrate:
+    condition: service_completed_successfully
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+networks:
+  dokploy-network: {}
+volumes:
+  agent_specs_data: null
+  postgres_data: null
+  redis_data: null
+  qdrant_data: null
+  grafana_data: null
+  loki_data: null
+  prometheus_data: null
+  pgbackrest_repo: null
+  minio_data: null
+  evolution_data: null
+  web_dist: null
+  console_web_dist: null
+  hatchet_config: null
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agenteos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-agenteos}
+    command: 'postgres -c wal_level=replica -c shared_preload_libraries=pg_stat_statements
+      -c log_min_duration_statement=200 -c idle_in_transaction_session_timeout=30000
+      -c archive_mode=on -c archive_command=/bin/true -c max_connections=200
+
+      '
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    - ./infra/compose/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-agenteos} -d ${POSTGRES_DB:-agenteos}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+    - dokploy-network
+  redis:
+    restart: unless-stopped
+    image: redis:7-alpine
+    command:
+    - redis-server
+    - --maxmemory-policy
+    - allkeys-lru
+    - --appendonly
+    - 'yes'
+    volumes:
+    - redis_data:/data
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+    - dokploy-network
+  qdrant:
+    restart: unless-stopped
+    image: qdrant/qdrant
+    volumes:
+    - qdrant_data:/qdrant/storage
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+    - dokploy-network
+  litellm-proxy:
+    restart: unless-stopped
+    image: ghcr.io/berriai/litellm:main-stable
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY obrigatório}
+      REDIS_URL: ${LITELLM_REDIS_URL:-redis://redis:6379/0}
+    command:
+    - --config
+    - /app/config.yaml
+    - --port
+    - '4000'
+    volumes:
+    - ./infra/compose/litellm_config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+        || exit 1
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+    - dokploy-network
+  hatchet:
+    restart: unless-stopped
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest@sha256:8bcaa78792a3de898d3f906b2f57c73fb3480e46cbeedc08c014fdf53060bba3
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/hatchet?sslmode=disable
+      DATABASE_POSTGRES_HOST: postgres
+      DATABASE_POSTGRES_PORT: '5432'
+      DATABASE_POSTGRES_USERNAME: ${POSTGRES_USER:-agenteos}
+      DATABASE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no
+        .env}
+      DATABASE_POSTGRES_DB_NAME: hatchet
+      SERVER_AUTH_COOKIE_DOMAIN: ${HATCHET_COOKIE_DOMAIN:-localhost}
+      SERVER_AUTH_COOKIE_INSECURE: t
+      SERVER_AUTH_SET_EMAIL_VERIFIED: t
+      SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+      SERVER_GRPC_INSECURE: t
+      SERVER_GRPC_BROADCAST_ADDRESS: hatchet:7077
+      SERVER_GRPC_PORT: '7077'
+      SERVER_URL: http://localhost:8888
+      SERVER_DEFAULT_ENGINE_VERSION: V1
+      ADMIN_EMAIL: ${HATCHET_ADMIN_EMAIL:?HATCHET_ADMIN_EMAIL required (admin inicial
+        do dashboard Hatchet)}
+      ADMIN_PASSWORD: ${HATCHET_ADMIN_PASSWORD:?HATCHET_ADMIN_PASSWORD required (admin
+        inicial do dashboard Hatchet)}
+    volumes:
+    - hatchet_config:/config
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -qO- http://localhost:8733/live || exit 1
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+    - dokploy-network
+    ports:
+    - 127.0.0.1:${SANDBOX_HATCHET_PORT:-8889}:8888
+  otel-collector:
+    restart: unless-stopped
+    image: otel/opentelemetry-collector-contrib:latest
+    command:
+    - --config=/etc/otel-collector-config.yaml
+    volumes:
+    - ./infra/otel/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+    - dokploy-network
+  prometheus:
+    restart: unless-stopped
+    image: prom/prometheus
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
+    volumes:
+    - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    - prometheus_data:/prometheus
+    networks:
+    - dokploy-network
+  loki:
+    restart: unless-stopped
+    image: grafana/loki:3.7.3
+    command:
+    - -config.file=/etc/loki/loki-config.yaml
+    - -config.expand-env=true
+    environment:
+      LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD:-168h}
+    volumes:
+    - ./infra/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+    - loki_data:/loki
+    networks:
+    - dokploy-network
+  grafana:
+    restart: unless-stopped
+    image: grafana/grafana-oss
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_AUTH_DISABLE_LOGIN_FORM: 'false'
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD
+        obrigatório}
+    volumes:
+    - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    - grafana_data:/var/lib/grafana
+    networks:
+    - dokploy-network
+  node_exporter:
+    restart: unless-stopped
+    image: prom/node-exporter
+    networks:
+    - dokploy-network
+  postgres_exporter:
+    restart: unless-stopped
+    image: quay.io/prometheuscommunity/postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+  redis_exporter:
+    restart: unless-stopped
+    image: oliver006/redis_exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+  pgbackrest:
+    restart: unless-stopped
+    image: woblerr/pgbackrest:2.53
+    entrypoint:
+    - sh
+    - -c
+    - tail -f /dev/null
+    volumes:
+    - ./infra/pgbackrest/pgbackrest.conf:/etc/pgbackrest/pgbackrest.conf:ro
+    - pgbackrest_repo:/var/lib/pgbackrest
+    - postgres_data:/var/lib/postgresql/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+  embeddings:
+    restart: unless-stopped
+    profiles:
+    - retrieval
+    environment:
+      EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:-BAAI/bge-m3}
+      DEVICE: ${EMBEDDINGS_DEVICE:-cpu}
+      PORT: '8001'
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"
+        || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+    - dokploy-network
+  reranker:
+    restart: unless-stopped
+    profiles:
+    - retrieval
+    environment:
+      RERANKER_MODEL_ID: ${RERANKER_MODEL_ID:-BAAI/bge-reranker-v2-m3}
+      DEVICE: ${RERANKER_DEVICE:-cpu}
+      PORT: '8002'
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"
+        || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+    - dokploy-network
+  db-migrate:
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}db-migrate:${IMAGE_TAG:-latest}
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+      AGENT_SPECS_SEED_ROOTS: ${AGENT_SPECS_SEED_ROOTS:-/app/packages/agent-specs:/app/vendor/sandbox-agents}
+      SECRET_KEY: ${SECRET_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      APP_MFA_MASTER_KEY: ${APP_MFA_MASTER_KEY:-}
+      JWT_INTERNAL_SECRET: ${JWT_INTERNAL_SECRET:-}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-}
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-}
+      SHORT_LINK_HMAC_SECRET: ${SHORT_LINK_HMAC_SECRET:-}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      HATCHET_ADMIN_PASSWORD: ${HATCHET_ADMIN_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - dokploy-network
+    volumes:
+    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    pull_policy: always
+  minio:
+    restart: unless-stopped
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+    - minio_data:/data
+    healthcheck:
+      test:
+      - CMD
+      - mc
+      - ready
+      - local
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+    - dokploy-network
+  mailpit:
+    restart: unless-stopped
+    image: axllent/mailpit:v1.21
+    environment:
+      MP_MAX_MESSAGES: '500'
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    volumes:
+    - /tmp/mailpit:/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q --spider http://localhost:8025/livez || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+    - dokploy-network
+  evolution-api:
+    restart: unless-stopped
+    image: evoapicloud/evolution-api:v2.2.3
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://evolution-api:8080}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-dev-evolution-key}
+      DATABASE_ENABLED: 'false'
+      WEBHOOK_GLOBAL_URL: ${EVOLUTION_WEBHOOK_URL:-http://channels:8000/webhook/whatsapp/evolution}
+      WEBHOOK_GLOBAL_ENABLED: 'true'
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: 'false'
+      DEL_INSTANCE: 'false'
+      CONFIG_SESSION_PHONE_CLIENT: AgenteOS
+      LOG_LEVEL: ERROR
+    volumes:
+    - evolution_data:/evolution/instances
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q --spider http://localhost:8080/health || exit 1
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+    - dokploy-network
+    profiles:
+    - channels
+  api-gateway:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:?INVITE_LINK_BASE required (e.g. https://yourdomain)}
+      OTEL_SERVICE_NAME: api-gateway
+      AGENT_RUNTIME_URL: http://agent-runtime:8000
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      APP_MFA_MASTER_KEY: ${APP_MFA_MASTER_KEY:?APP_MFA_MASTER_KEY required}
+      JWT_INTERNAL_SECRET: ${JWT_INTERNAL_SECRET:?JWT_INTERNAL_SECRET required}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required}
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-}
+      DATA_PLANE_SERVICE_TOKEN: ${SERVICE_TOKEN:-}
+      DATA_PLANE_URL: ${DATA_PLANE_URL:-http://data-plane:8000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY required}
+      LITELLM_PROXY_URL: ${LITELLM_PROXY_URL:-http://litellm-proxy:4000}
+      MCP_ADMIN_URL: ${MCP_ADMIN_URL:-http://mcp-server:8000}
+      MCP_ADMIN_KEY: ${MCP_ADMIN_KEY:-}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_ADMIN_TENANT_ID: ${MCP_ADMIN_TENANT_ID:-}
+      CHANNELS_URL: ${CHANNELS_URL:-http://channels:8000}
+      CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN:-}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  mcp-server:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}mcp-server:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: mcp-server
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_ALLOWED_TENANT_IDS: ${MCP_ALLOWED_TENANT_IDS:-[]}
+      MCP_TRUSTED_PROXY_HOPS: ${MCP_TRUSTED_PROXY_HOPS:-2}
+      AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    volumes:
+    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    pull_policy: always
+    ports:
+    - ${MCP_PORT:-8100}:8000
+  agent-runtime:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: agent-runtime
+      DATA_PLANE_SERVICE_TOKEN: ${SERVICE_TOKEN}
+      CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN}
+      HITL_SERVICE_URL: ${HITL_SERVICE_URL:-http://hitl-service:8000}
+      DATA_PLANE_URL: ${DATA_PLANE_URL:-http://data-plane:8000}
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    volumes:
+    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    networks:
+    - dokploy-network
+    pull_policy: always
+  api-gateway-worker:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    command:
+    - uv
+    - run
+    - --package
+    - api-gateway
+    - python
+    - -m
+    - api_gateway.indexing_worker
+    profiles:
+    - runtime
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: api-gateway-worker
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    healthcheck:
+      disable: true
+    pull_policy: always
+  agent-runtime-worker:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    command:
+    - uv
+    - run
+    - --package
+    - agent-runtime
+    - python
+    - -m
+    - agent_runtime.worker
+    profiles:
+    - runtime
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: agent-runtime-worker
+      DATA_PLANE_SERVICE_TOKEN: ${SERVICE_TOKEN}
+      CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN}
+      HITL_SERVICE_URL: ${HITL_SERVICE_URL:-http://hitl-service:8000}
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      LITELLM_PROXY_URL: ${LITELLM_PROXY_URL:-http://litellm-proxy:4000}
+      DATA_PLANE_URL: ${DATA_PLANE_URL:-http://data-plane:8000}
+      AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    volumes:
+    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    networks:
+    - dokploy-network
+    healthcheck:
+      disable: true
+    pull_policy: always
+  data-plane:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}data-plane:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: data-plane
+      SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN required}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  retrieval:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}retrieval:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: retrieval
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  channels:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}channels:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: channels
+      SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN required}
+      SHORT_LINK_HMAC_SECRET: ${SHORT_LINK_HMAC_SECRET:?SHORT_LINK_HMAC_SECRET required}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  hitl-service:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}hitl-service:${IMAGE_TAG:-latest}
+    profiles:
+    - hitl
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: hitl-service
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  hitl-service-worker:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}hitl-service:${IMAGE_TAG:-latest}
+    command:
+    - uv
+    - run
+    - --package
+    - hitl-service
+    - python
+    - -m
+    - hitl_service.worker
+    profiles:
+    - hitl
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: hitl-service-worker
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    healthcheck:
+      disable: true
+    pull_policy: always
+  evaluator:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}evaluator:${IMAGE_TAG:-latest}
+    profiles:
+    - evaluator
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: evaluator
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      LLM_GATEWAY_URL: ${LLM_GATEWAY_URL:-http://litellm:4000}
+      OBJECT_STORAGE_URL: ${OBJECT_STORAGE_URL:-}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-roi-reports}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  evaluator-worker:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}evaluator:${IMAGE_TAG:-latest}
+    command:
+    - uv
+    - run
+    - --package
+    - evaluator
+    - python
+    - -m
+    - evaluator.worker
+    healthcheck:
+      disable: true
+    profiles:
+    - evaluator
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      OTEL_SERVICE_NAME: evaluator-worker
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
+      HATCHET_CLIENT_TLS_STRATEGY: none
+      HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      LLM_GATEWAY_URL: ${LLM_GATEWAY_URL:-http://litellm:4000}
+      OBJECT_STORAGE_URL: ${OBJECT_STORAGE_URL:-}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-roi-reports}
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      hatchet:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  web:
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}web:${IMAGE_TAG:-latest}
+    command:
+    - sh
+    - -c
+    - cp -r /app/dist/. /srv/web/ 2>/dev/null || true
+    volumes:
+    - web_dist:/srv/web
+    restart: 'no'
+    networks:
+    - dokploy-network
+    pull_policy: always
+  platform-console:
+    restart: unless-stopped
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}platform-console:${IMAGE_TAG:-latest}
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEBUG: ${DEBUG:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_RELEASE: ${SOURCE_REF:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
+      LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
+      INVITE_LINK_BASE: ${INVITE_LINK_BASE:?INVITE_LINK_BASE required (e.g. https://yourdomain)}
+      OTEL_SERVICE_NAME: platform-console
+      APP_MFA_MASTER_KEY: ${APP_MFA_MASTER_KEY:?APP_MFA_MASTER_KEY required}
+      JWT_INTERNAL_SECRET: ${JWT_INTERNAL_SECRET:?JWT_INTERNAL_SECRET required}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required}
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200
+        else 1)
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+    - dokploy-network
+    pull_policy: always
+  console-web:
+    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}console-web:${IMAGE_TAG:-latest}
+    command:
+    - sh
+    - -c
+    - cp -r /app/dist/. /srv/console-web/ 2>/dev/null || true
+    volumes:
+    - console_web_dist:/srv/console-web
+    restart: 'no'
+    networks:
+    - dokploy-network
+    pull_policy: always
+  nginx:
+    restart: unless-stopped
+    image: nginx:alpine
+    depends_on:
+    - api-gateway
+    - web
+    - platform-console
+    - console-web
+    environment:
+      ADMIN_SERVER_NAME: ${ADMIN_SERVER_NAME:-admin.localhost}
+      NGINX_ENVSUBST_FILTER: ^ADMIN_
+    volumes:
+    - ./infra/nginx/nginx.npm.conf:/etc/nginx/nginx.conf:ro
+    - ./infra/nginx/templates-npm:/etc/nginx/templates:ro
+    - web_dist:/usr/share/nginx/html:ro
+    - console_web_dist:/usr/share/nginx/console:ro
+    networks:
+    - dokploy-network
+    ports:
+    - ${SANDBOX_HTTP_PORT:-8090}:80

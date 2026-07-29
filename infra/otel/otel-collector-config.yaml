@@ -1,0 +1,95 @@
+# OTel Collector — E01 §5.4
+# Receivers: OTLP gRPC (4317) + HTTP (4318)
+# Processors: batch, memory_limiter
+# Exporters: Prometheus (0.0.0.0:8889 — métricas de aplicação) +
+#            otlphttp/loki (OTLP nativo → Loki 3.x /otlp/v1/logs).
+# Self-telemetry: 0.0.0.0:8888 (métricas internas do collector — queue, drops).
+# Propagation: W3C TraceContext
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "otelcol"
+    send_timestamps: true
+    metric_expiration: 180m
+    enable_open_metrics: false
+
+  # Collector >= 0.123 removeu o exporter 'loki'; Loki 3.x ingere OTLP nativo.
+  # sending_queue + retry_on_failure: sobrevive a picos 429/503 do Loki durante
+  # compaction (a cada 10min). Sem isso, batches são drop silenciosos.
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 512
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # PENDENTE (E05): verificar se Agno emite spans OTLP nativamente.
+  # Se não, instrumentação manual via callback do Agno será necessária.
+  # Não bloqueia E01 mas deve ser issue aberta antes do DoD de E01.
+  debug:
+    verbosity: basic
+
+connectors: {}
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/loki]
+
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: basic
+      # Self-telemetry do collector (queue length, drops, export failures).
+      # Interno à rede docker `agenteos` — sem port publish. Habilita
+      # debug ad-hoc via `curl otel-collector:8888/metrics` durante incidente.
+      # 'address' foi removido no collector >= 0.123 — sintaxe nova via readers.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+
+# W3C TraceContext propagation is the OTel SDK default.
+# Configured at SDK level in each service via OTEL_PROPAGATORS=tracecontext,baggage

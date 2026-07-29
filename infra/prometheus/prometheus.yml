@@ -1,0 +1,94 @@
+# Prometheus — E01 §5.4
+# Scrape targets: 5 app services + otel-collector + node_exporter + postgres_exporter + redis_exporter
+# Alert rules: alerts.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    environment: "${APP_ENV:-development}"
+    project: "agenteos"
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+scrape_configs:
+  # ── App services (FastAPI /metrics via prometheus_client) ──────────────
+  - job_name: "api-gateway"
+    static_configs:
+      - targets: ["api-gateway:8000"]
+        labels:
+          service: "api-gateway"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  - job_name: "agent-runtime"
+    static_configs:
+      - targets: ["agent-runtime:8000"]
+        labels:
+          service: "agent-runtime"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  - job_name: "data-plane"
+    static_configs:
+      - targets: ["data-plane:8000"]
+        labels:
+          service: "data-plane"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  - job_name: "retrieval"
+    static_configs:
+      - targets: ["retrieval:8000"]
+        labels:
+          service: "retrieval"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  - job_name: "channels"
+    static_configs:
+      - targets: ["channels:8000"]
+        labels:
+          service: "channels"
+    metrics_path: "/metrics"
+    scrape_interval: 15s
+
+  # ── OTel Collector (Prometheus exporter on 8889) ──────────────────────
+  - job_name: "otel-collector"
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          service: "otel-collector"
+    metrics_path: "/metrics"
+    scrape_interval: 30s
+
+  # ── Infrastructure exporters ──────────────────────────────────────────
+  - job_name: "node_exporter"
+    static_configs:
+      - targets: ["node_exporter:9100"]
+        labels:
+          service: "node-exporter"
+    # Note: node_exporter port is NEVER mapped to 0.0.0.0 in prod (R10, DoD §7.3)
+    scrape_interval: 30s
+
+  - job_name: "postgres_exporter"
+    static_configs:
+      - targets: ["postgres_exporter:9187"]
+        labels:
+          service: "postgres"
+    scrape_interval: 30s
+
+  - job_name: "redis_exporter"
+    static_configs:
+      - targets: ["redis_exporter:9121"]
+        labels:
+          service: "redis"
+    scrape_interval: 30s

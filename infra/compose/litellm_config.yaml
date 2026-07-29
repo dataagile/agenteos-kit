@@ -1,0 +1,63 @@
+# LiteLLM proxy — configuração de startup HA (E08 G1/G6).
+#
+# Regras imutáveis (D16/D21):
+#   - NENHUMA entrada model_list / models aqui.
+#   - Modelos são carregados exclusivamente em runtime via sync.py (POST /model/new).
+#   - O teste test_litellm_has_no_model_entries verifica essa invariante.
+#
+# Cache semântico: Redis, similarity 0.95, TTL 3600s (G6 §3.6).
+# O runtime passa cache_control: {"no-cache": true} em steps com writes (§3.6).
+
+general_settings:
+  # master_key via env — nunca valor literal (G1 §3.1).
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # Postgres dedicado via env — SQLite explicitamente proibido.
+  database_url: os.environ/DATABASE_URL
+  # Habilita DB-backed virtual keys e router_settings persistentes.
+  store_model_in_db: true
+  # Health-check ativo dos provedores (§3.5 — lacuna do ADR-0006 corrigida).
+  # litellm main-stable >= 2026-07 exige em general_settings (antes ficava em
+  # router_settings). Trio obrigatório na doc oficial
+  # (docs.litellm.ai/docs/proxy/health_check_routing):
+  #   - background_health_checks: sem isso, health_check_interval é ignorado.
+  #   - health_check_interval: cadência em segundos.
+  #   - enable_health_check_routing: sem isso, providers unhealthy não saem do pool.
+  #
+  # Interval alinhado com DEFAULT_SHARED_HEALTH_CHECK_TTL (300s). Interval < TTL
+  # é ineficaz: cached result serve durante a diferença, então o tick fica no-op
+  # e a detecção real acontece a cada TTL. 300s = detecção em até 5 min, aceitável
+  # pra fallback via cooldown. Doc example em shared_health_check usa 300 também.
+  background_health_checks: true
+  health_check_interval: 300
+  enable_health_check_routing: true
+  # HA (litellm.yml sobe 2 réplicas atrás do mesmo Redis): sem shared state,
+  # cada réplica executa health-check independente → 2× calls pagas + estado
+  # divergente. Doc: docs.litellm.ai/docs/proxy/shared_health_check.
+  use_shared_health_check: true
+
+litellm_settings:
+  # Cache semântico habilitado globalmente (DA-5, §3.6).
+  cache: true
+  cache_params:
+    type: redis
+    # Similaridade mínima para hit de cache semântico (§3.6: DA-4).
+    similarity_threshold: 0.95
+    # TTL padrão em segundos (1 hora — §3.6).
+    ttl: 3600
+    # URL injetada via env (Redis compartilhado com o restante da stack).
+    redis_url: os.environ/REDIS_URL
+  # Número de tentativas antes de escalar para fallback (ADR-0006 portado).
+  num_retries: 2
+  # Timeout por chamada (ms) — antes de tentar próximo provider do fallback.
+  request_timeout: 30
+
+router_settings:
+  # Base de router_settings — populada em runtime por sync.py (G4 §3.3).
+  # Fallback chains são injetados por tenant via POST /router/settings.
+  # Valor padrão vazio: nenhum tenant pré-configurado aqui (zero hardcode D16).
+  routing_strategy: latency-based-routing
+  # Janela de cooldown (s) para provider degradado ser removido do pool.
+  # DEVE ser > health_check_interval (300s) — docs.litellm.ai/docs/proxy/health_check_routing
+  # exigem a invariante para o allowed_fails_policy acumular corretamente. Com cooldown <
+  # interval, o provider unhealthy volta ao pool antes do próximo tick de verificação.
+  cooldown_time: 360

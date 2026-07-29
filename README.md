@@ -1,0 +1,133 @@
+# Kit de distribuição AgenteOS
+
+Kit **pull-only**: nenhuma imagem é construída aqui, todas vêm prontas do Docker
+Hub (org `dataagileai`). Gerado automaticamente por
+`scripts/gen_distrib.py` — **não edite os `.yml` deste diretório à mão**; eles
+são sobrescritos a cada `make kit`.
+
+## Pré-requisitos
+
+- Docker Engine + Docker Compose v2 (`docker compose version`).
+- VPS/servidor **amd64** (as imagens publicadas são amd64; não há build local
+  para compensar arquitetura).
+- Portas livres no host: `80`/`443` (produção) ou `8090`/`8100`/`8889` (sandbox).
+
+## Instalação rápida (recomendada)
+
+```bash
+./install.sh            # pergunta o que instalar (prod, sandbox ou both)
+```
+
+O instalador verifica os pré-requisitos, gera os segredos automaticamente
+(`openssl`), sobe a stack e executa o passo do token do Hatchet sozinho. Se o
+`.env` já existe, ele é preservado (re-rodar é seguro). Os passos manuais
+abaixo continuam válidos para quem prefere controle total.
+
+## Instalação — produção
+
+```bash
+cp .env.example .env
+# editar .env: preencher todo valor "trocar-obrigatoriamente" com um segredo real
+# (SECRET_KEY, APP_MFA_MASTER_KEY, JWT_INTERNAL_SECRET, INTERNAL_TOKEN,
+#  SERVICE_TOKEN, SHORT_LINK_HMAC_SECRET: gerar cada um com `openssl rand -hex 32`)
+
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+A aplicação sobe em `http://<host>` (porta `HTTP_PORT`, padrão `80`).
+
+## Instalação — sandbox
+
+Mesma stack, isolada por outro nome de projeto (`agenteos-sandbox`) e outras
+portas — pode rodar na **mesma VPS** que a produção sem conflito.
+
+```bash
+cp .env.sandbox.example .env.sandbox
+# editar .env.sandbox: segredos DIFERENTES dos de produção (ver aviso no arquivo)
+
+docker compose -f docker-compose.sandbox.yml --env-file .env.sandbox pull
+docker compose -f docker-compose.sandbox.yml --env-file .env.sandbox up -d
+```
+
+O servidor MCP (autoria de agentes via Claude Code/skill) fica em
+`http://<host>:8100/mcp` — habilite com `MCP_ENABLED=true` e preencha
+`MCP_ALLOWED_TENANT_IDS` no `.env.sandbox` antes de usar.
+
+## Upgrade
+
+Os serviços da aplicação usam `pull_policy: always`: **todo `docker compose up -d`
+já verifica e baixa a imagem `latest` mais nova** antes de subir.
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env up -d
+```
+
+**`docker restart` NÃO atualiza nada** — restart reusa o container existente.
+Atualização é sempre via `docker compose up -d`. (Se o Docker Hub estiver
+inacessível no momento do `up`, rode com `--pull missing` para subir com a
+imagem local: `docker compose up -d --pull missing`.)
+
+Para o suporte confirmar qual versão do código está no ar:
+
+```bash
+docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' agenteos-prod-api-gateway-1
+```
+
+## Prod e sandbox no mesmo servidor: cuidado com `latest`
+
+A tag `latest` de uma imagem é **única no daemon Docker do host** — ela não é
+isolada por projeto/compose. Se produção e sandbox rodam no mesmo servidor e
+ambas usam `IMAGE_TAG=latest`, um `pull` feito só no sandbox já atualiza o
+ponteiro `latest` local; a próxima vez que a produção recriar um container
+(deploy, reboot, `up -d` depois de qualquer mudança) ela sobe a imagem nova
+**mesmo sem ter rodado `pull` na produção**.
+
+Duas formas de evitar surpresa:
+
+- **(a)** Atualize as duas instâncias juntas (mesmo `pull`/`up -d` nas duas, na
+  mesma janela).
+- **(b)** Fixe a produção numa tag imutável (`IMAGE_TAG=AAAA.MM.DD-<sha>` no
+  `.env`) e promova conscientemente depois de validar no sandbox — só o
+  sandbox fica em `latest`.
+
+## Rollback
+
+Cada publicação grava, além de `latest`, uma tag imutável
+`AAAA.MM.DD-<sha-curto>`. Para fixar (ou reverter para) uma versão específica,
+defina no `.env`/`.env.sandbox`:
+
+```bash
+IMAGE_TAG=2026.07.29-abc1234
+```
+
+e rode `pull && up -d` novamente.
+
+## Avisos operacionais
+
+- **Segredos placeholder não sobem**: no primeiro boot, o serviço `db-migrate`
+  (porteiro da stack) recusa iniciar se qualquer segredo ainda estiver com o
+  valor de exemplo (`trocar-...`) do `.env.example`, listando quais faltam
+  trocar. Gere valores reais (instruções em cada linha do `.env.example`) e
+  rode `docker compose up -d` novamente.
+- **Não remova `COMPOSE_PROFILES` do `.env`**: o profile `runtime` contém os
+  workers — sem eles a plataforma sobe "verde" mas nenhuma execução de agente
+  roda (fica travada em "received"). `hitl` e `evaluator` também são parte do
+  produto; só `retrieval` é opcional (fora deste kit v1).
+
+- **Nunca recrie o container `hatchet` isoladamente** (`docker compose up
+  --force-recreate hatchet` ou `rm` + `up`). As chaves de assinatura do
+  Hatchet são geradas no boot e vivem só no volume `hatchet_config`; recriar o
+  container sem preservar o volume invalida o token de **todos** os workers e
+  trava runs em `received`. Use sempre `docker compose up -d` (sem
+  `--force-recreate`) para atualizar os demais serviços.
+- **Sandbox: specs de agente podem se perder em redeploy.** Limitação
+  conhecida do store de AgentSpecs do `mcp-server` neste kit v1 — fix em
+  andamento numa feature separada. Evite depender do sandbox como única cópia
+  de uma spec ainda não publicada.
+- **Rate-limit de pull anônimo do Docker Hub**: se `docker compose pull`
+  começar a falhar com `429 Too Many Requests`, rode `docker login` (mesmo
+  sem conta paga — usuário autenticado tem limite maior que anônimo).
+- **Profile `retrieval` (embeddings/reranker) fora deste kit v1**: esses dois
+  serviços não têm imagem publicada (`build:` local no monorepo) — não
+  suba o profile `retrieval` a partir deste kit.

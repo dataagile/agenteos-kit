@@ -1,0 +1,213 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [] },
+  "description": "AgenteOS — Redis: hit rate, memória, comandos/s. Fonte: redis_exporter.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Hit Rate",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "percent", "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "(\n  rate(redis_keyspace_hits_total[5m])\n  /\n  (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))\n) * 100",
+          "legendFormat": "Hit Rate %",
+          "refId": "A"
+        }
+      ],
+      "title": "Cache Hit Rate (%)",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 18, "x": 6, "y": 1 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "(\n  rate(redis_keyspace_hits_total[5m])\n  /\n  (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))\n) * 100",
+          "legendFormat": "Hit Rate %",
+          "refId": "A"
+        }
+      ],
+      "title": "Cache Hit Rate % (histórico)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 4,
+      "title": "Memória",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes",
+          "legendFormat": "Usada",
+          "refId": "A"
+        },
+        {
+          "expr": "redis_memory_max_bytes",
+          "legendFormat": "Máximo (maxmemory)",
+          "refId": "B"
+        }
+      ],
+      "title": "Uso de Memória Redis",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 536870912 },
+              { "color": "red", "value": 805306368 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 6,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes",
+          "legendFormat": "Memória Usada",
+          "refId": "A"
+        }
+      ],
+      "title": "Memória Usada (gauge)",
+      "type": "gauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 7,
+      "title": "Comandos por Segundo",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "id": 8,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "rate(redis_commands_total[5m])",
+          "legendFormat": "{{ cmd }} — ops/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Comandos Redis por Segundo (por tipo)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "redis_connected_clients",
+          "legendFormat": "Clientes conectados",
+          "refId": "A"
+        }
+      ],
+      "title": "Clientes Conectados",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "redis_db_keys",
+          "legendFormat": "{{ db }} — keys",
+          "refId": "A"
+        }
+      ],
+      "title": "Chaves por DB",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["agenteos", "redis"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AgenteOS — Redis",
+  "uid": "agenteos-redis",
+  "version": 1
+}

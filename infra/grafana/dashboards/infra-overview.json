@@ -1,0 +1,176 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [] },
+  "description": "AgenteOS — Infra Overview: CPU/mem/disco por container, erros HTTP por serviço, latência p50/p95/p99.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "CPU & Memória por Container",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{name!=\"\"}[5m]) * 100",
+          "legendFormat": "{{ name }}",
+          "refId": "A"
+        }
+      ],
+      "title": "CPU Usage % por Container",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{name!=\"\"}",
+          "legendFormat": "{{ name }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Memória por Container",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 9 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "(\n  1 - (\n    node_filesystem_avail_bytes{fstype!~\"tmpfs|fuse.lxcfs|squashfs|overlay\"}\n    / node_filesystem_size_bytes{fstype!~\"tmpfs|fuse.lxcfs|squashfs|overlay\"}\n  )\n) * 100",
+          "legendFormat": "{{ mountpoint }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Uso de Disco % por Mountpoint",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 5,
+      "title": "Erros HTTP por Serviço",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(http_requests_total{status_code=~\"5..\"}[5m]))",
+          "legendFormat": "{{ service }} — 5xx",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (service) (rate(http_requests_total{status_code=~\"4..\"}[5m]))",
+          "legendFormat": "{{ service }} — 4xx",
+          "refId": "B"
+        }
+      ],
+      "title": "Taxa de Erros HTTP por Serviço (req/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent", "min": 0, "max": 100 },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "(\n  sum by (service) (rate(http_requests_total{status_code=~\"5..\"}[5m]))\n  /\n  sum by (service) (rate(http_requests_total[5m]))\n) * 100",
+          "legendFormat": "{{ service }} — error %",
+          "refId": "A"
+        }
+      ],
+      "title": "Taxa de Erro 5xx % por Serviço",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "id": 8,
+      "title": "Latência por Serviço (p50 / p95 / p99)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "agenteos-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
+      "id": 9,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ service }} — p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ service }} — p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (service, le) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{ service }} — p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Latência HTTP por Serviço (p50/p95/p99)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["agenteos", "infra"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AgenteOS — Infra Overview",
+  "uid": "agenteos-infra-overview",
+  "version": 1
+}

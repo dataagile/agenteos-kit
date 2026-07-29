@@ -1,0 +1,89 @@
+# Loki — E01 §5.4 / Q1
+# Storage: filesystem local no VPS.
+# Retenção: 168h (dev) / 720h (staging+prod) via env var ${LOKI_RETENTION_PERIOD:-168h}.
+# Audit longo prazo (>=365d) fica em Postgres append-only, NÃO no Loki (Q1).
+# Reavaliar S3-compatible quando volume > ~50 GB.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: "127.0.0.1"
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+    cache_ttl: 24h
+  filesystem:
+    directory: /loki/chunks
+
+# Loki 3.x aceita OTLP em /otlp. Sem esta config, TODOS os resource attributes
+# viram labels indexadas (padrão default é lista longa incluindo pod.name,
+# container.id, k8s.job.name, etc — cardinalidade explode em setups sem k8s).
+# Restringimos a apenas os identificadores estáveis do stack agenteos.
+distributor:
+  otlp_config:
+    default_resource_attributes_as_index_labels:
+      - service.name
+      - service.namespace
+      - deployment.environment
+
+limits_config:
+  # Retenção configurável via env var: 168h (dev) ou 720h (staging/prod).
+  # Valor padrão dev — override via LOKI_RETENTION_PERIOD no compose.
+  retention_period: "${LOKI_RETENTION_PERIOD:-168h}"
+  # Rejeita logs com timestamp muito antigo (evita backfill acidental).
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  max_label_names_per_series: 30
+  max_entries_limit_per_query: 5000
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem
+
+querier:
+  max_concurrent: 4
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+ruler:
+  alertmanager_url: http://alertmanager:9093
+
+analytics:
+  reporting_enabled: false

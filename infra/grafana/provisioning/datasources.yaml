@@ -1,0 +1,43 @@
+# Grafana datasources provisioning — E01 §5.4
+# Prometheus + Loki. Provisionado por arquivo (read-only via UI).
+# Grafana auth: GF_AUTH_ANONYMOUS_ENABLED=false (DoD §7.3 / R12).
+
+apiVersion: 1
+
+deleteDatasources:
+  - name: "Old-Prometheus"
+    orgId: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: "agenteos-prometheus"
+    orgId: 1
+    url: http://prometheus:9090
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: "15s"
+      exemplarTraceIdDestinations:
+        - name: "trace_id"
+          datasourceUid: "agenteos-tempo"
+    version: 1
+
+  - name: Loki
+    type: loki
+    uid: "agenteos-loki"
+    orgId: 1
+    url: http://loki:3100
+    access: proxy
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: "TraceID"
+          matcherRegex: '"trace_id":"([^"]+)"'
+          url: ""
+          datasourceUid: "agenteos-tempo"
+    version: 1
