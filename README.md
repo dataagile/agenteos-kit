@@ -54,6 +54,26 @@ O servidor MCP (autoria de agentes via Claude Code/skill) fica em
 `http://<host>:8100/mcp` — habilite com `MCP_ENABLED=true` e preencha
 `MCP_ALLOWED_TENANT_IDS` no `.env.sandbox` antes de usar.
 
+### Token do Hatchet (obrigatório, uma vez por instância)
+
+Após o primeiro `up -d`, os 4 workers (`*-worker`) ficam reiniciando em loop —
+é esperado: eles precisam de um token que só pode ser gerado com o Hatchet já
+no ar. Gere e aplique (exemplo para a produção; repita com os arquivos da
+sandbox trocando `docker-compose.prod.yml`/`.env`):
+
+```bash
+TENANT_ID=$(docker compose --env-file .env -f docker-compose.prod.yml exec -T postgres \
+  psql -U agenteos -d hatchet -t -A -c 'SELECT id FROM "Tenant" LIMIT 1;')
+TOKEN=$(docker compose --env-file .env -f docker-compose.prod.yml exec -T hatchet \
+  /hatchet-admin token create --config /config --tenant-id "$TENANT_ID" | tr -d '[:space:]')
+echo "HATCHET_CLIENT_TOKEN=$TOKEN" >> .env
+docker compose --env-file .env -f docker-compose.prod.yml up -d --no-deps \
+  api-gateway-worker agent-runtime-worker hitl-service-worker evaluator-worker
+```
+
+O `--no-deps` é obrigatório: sem ele o compose recria o `hatchet` junto e o
+token gerado deixa de valer (ver Avisos operacionais).
+
 ## Instalação via painéis (Dokploy, Coolify, EasyPanel)
 
 Se o servidor já roda um painel de deploy, você não precisa do `install.sh` —
@@ -142,6 +162,10 @@ e rode `pull && up -d` novamente.
   valor de exemplo (`trocar-...`) do `.env.example`, listando quais faltam
   trocar. Gere valores reais (instruções em cada linha do `.env.example`) e
   rode `docker compose up -d` novamente.
+- **WhatsApp (Evolution API) vem desativado**: o profile `channels` fica fora
+  do default porque o Evolution API exige configuração própria (banco/chave —
+  vars `EVOLUTION_*`). Para ativar: configure as vars e acrescente `,channels`
+  ao `COMPOSE_PROFILES`.
 - **Não remova `COMPOSE_PROFILES` do `.env`**: o profile `runtime` contém os
   workers — sem eles a plataforma sobe "verde" mas nenhuma execução de agente
   roda (fica travada em "received"). `hitl` e `evaluator` também são parte do
@@ -153,10 +177,10 @@ e rode `pull && up -d` novamente.
   container sem preservar o volume invalida o token de **todos** os workers e
   trava runs em `received`. Use sempre `docker compose up -d` (sem
   `--force-recreate`) para atualizar os demais serviços.
-- **Sandbox: specs de agente podem se perder em redeploy.** Limitação
-  conhecida do store de AgentSpecs do `mcp-server` neste kit v1 — fix em
-  andamento numa feature separada. Evite depender do sandbox como única cópia
-  de uma spec ainda não publicada.
+- **Sandbox: specs de agente sobrevivem a redeploy.** O store de AgentSpecs do
+  `mcp-server` vive no volume durável `agent_specs_data` (compartilhado com o
+  seed do `db-migrate`). Inclua esse volume na rotina de backup se a autoria
+  for valiosa.
 - **Rate-limit de pull anônimo do Docker Hub**: se `docker compose pull`
   começar a falhar com `429 Too Many Requests`, rode `docker login` (mesmo
   sem conta paga — usuário autenticado tem limite maior que anônimo).
