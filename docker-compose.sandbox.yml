@@ -41,6 +41,7 @@ volumes:
   web_dist: null
   console_web_dist: null
   hatchet_config: null
+  hatchet_token: null
 services:
   postgres:
     restart: unless-stopped
@@ -168,6 +169,24 @@ services:
     - dokploy-network
     ports:
     - 127.0.0.1:${SANDBOX_HATCHET_PORT:-8889}:8888
+  hatchet-token-init:
+    image: python:3.12-slim
+    command:
+    - python
+    - /hatchet_token_init.py
+    environment:
+      HATCHET_API_URL: http://hatchet:8888
+      HATCHET_ADMIN_EMAIL: ${HATCHET_ADMIN_EMAIL:-}
+      HATCHET_ADMIN_PASSWORD: ${HATCHET_ADMIN_PASSWORD:-}
+    volumes:
+    - ./infra/scripts/hatchet_token_init.py:/hatchet_token_init.py:ro
+    - hatchet_token:/run/hatchet
+    depends_on:
+      hatchet:
+        condition: service_healthy
+    restart: 'no'
+    networks:
+    - dokploy-network
   otel-collector:
     restart: unless-stopped
     image: otel/opentelemetry-collector-contrib:latest
@@ -431,6 +450,7 @@ services:
       MCP_ADMIN_TENANT_ID: ${MCP_ADMIN_TENANT_ID:-}
       CHANNELS_URL: ${CHANNELS_URL:-http://channels:8000}
       CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN:-}
+      CHANNEL_WEBHOOK_BASE_URL: ${CHANNEL_WEBHOOK_BASE_URL:-}
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -525,13 +545,10 @@ services:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-dataagileai/agenteos-}api-gateway:${IMAGE_TAG:-latest}
     command:
-    - uv
-    - run
-    - --package
-    - api-gateway
-    - python
-    - -m
-    - api_gateway.indexing_worker
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package api-gateway python -m api_gateway.indexing_worker
     profiles:
     - runtime
     environment:
@@ -554,6 +571,8 @@ services:
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
+    volumes:
+    - hatchet_token:/run/hatchet:ro
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -561,6 +580,8 @@ services:
         condition: service_healthy
       hatchet:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
     networks:
     - dokploy-network
     healthcheck:
@@ -570,13 +591,10 @@ services:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-dataagileai/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
     command:
-    - uv
-    - run
-    - --package
-    - agent-runtime
-    - python
-    - -m
-    - agent_runtime.worker
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package agent-runtime python -m agent_runtime.worker
     profiles:
     - runtime
     environment:
@@ -614,8 +632,11 @@ services:
         condition: service_healthy
       hatchet:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
     volumes:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    - hatchet_token:/run/hatchet:ro
     networks:
     - dokploy-network
     healthcheck:
@@ -756,13 +777,10 @@ services:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-dataagileai/agenteos-}hitl-service:${IMAGE_TAG:-latest}
     command:
-    - uv
-    - run
-    - --package
-    - hitl-service
-    - python
-    - -m
-    - hitl_service.worker
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package hitl-service python -m hitl_service.worker
     profiles:
     - hitl
     environment:
@@ -785,6 +803,8 @@ services:
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
+    volumes:
+    - hatchet_token:/run/hatchet:ro
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -794,6 +814,8 @@ services:
         condition: service_healthy
       hatchet:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
     networks:
     - dokploy-network
     healthcheck:
@@ -841,13 +863,10 @@ services:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-dataagileai/agenteos-}evaluator:${IMAGE_TAG:-latest}
     command:
-    - uv
-    - run
-    - --package
-    - evaluator
-    - python
-    - -m
-    - evaluator.worker
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package evaluator python -m evaluator.worker
     healthcheck:
       disable: true
     profiles:
@@ -875,6 +894,8 @@ services:
       LLM_GATEWAY_URL: ${LLM_GATEWAY_URL:-http://litellm:4000}
       OBJECT_STORAGE_URL: ${OBJECT_STORAGE_URL:-}
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-roi-reports}
+    volumes:
+    - hatchet_token:/run/hatchet:ro
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -884,6 +905,8 @@ services:
         condition: service_healthy
       hatchet:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
     networks:
     - dokploy-network
     pull_policy: always

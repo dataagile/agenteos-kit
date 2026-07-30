@@ -54,25 +54,24 @@ O servidor MCP (autoria de agentes via Claude Code/skill) fica em
 `http://<host>:8100/mcp` — habilite com `MCP_ENABLED=true` e preencha
 `MCP_ALLOWED_TENANT_IDS` no `.env.sandbox` antes de usar.
 
-### Token do Hatchet (obrigatório, uma vez por instância)
+### Token do Hatchet (automático)
 
-Após o primeiro `up -d`, os 4 workers (`*-worker`) ficam reiniciando em loop —
-é esperado: eles precisam de um token que só pode ser gerado com o Hatchet já
-no ar. Gere e aplique (exemplo para a produção; repita com os arquivos da
-sandbox trocando `docker-compose.prod.yml`/`.env`):
+O token dos workers é gerado automaticamente no primeiro `up -d` pelo serviço
+`hatchet-token-init` (one-shot): ele autentica na API do Hatchet com o
+`HATCHET_ADMIN_EMAIL/PASSWORD` do seu `.env`, cria o token e o grava num volume
+que os workers leem sozinhos. Rotação também é automática (regenera quando
+faltam <30 dias de validade). Se você preferir controlar o token manualmente,
+basta definir `HATCHET_CLIENT_TOKEN` no `.env` — a variável explícita sempre
+vence o arquivo.
+
+**Recovery** (só se o container do `hatchet` for recriado sem o volume de
+config — chaves novas invalidam tokens antigos):
 
 ```bash
-TENANT_ID=$(docker compose --env-file .env -f docker-compose.prod.yml exec -T postgres \
-  psql -U agenteos -d hatchet -t -A -c 'SELECT id FROM "Tenant" LIMIT 1;')
-TOKEN=$(docker compose --env-file .env -f docker-compose.prod.yml exec -T hatchet \
-  /hatchet-admin token create --config /config --tenant-id "$TENANT_ID" | tr -d '[:space:]')
-echo "HATCHET_CLIENT_TOKEN=$TOKEN" >> .env
-docker compose --env-file .env -f docker-compose.prod.yml up -d --no-deps \
-  api-gateway-worker agent-runtime-worker hitl-service-worker evaluator-worker
+docker compose --env-file .env -f docker-compose.prod.yml run --rm -e HATCHET_TOKEN_FORCE=1 hatchet-token-init
+docker compose --env-file .env -f docker-compose.prod.yml restart api-gateway-worker agent-runtime-worker hitl-service-worker evaluator-worker
 ```
 
-O `--no-deps` é obrigatório: sem ele o compose recria o `hatchet` junto e o
-token gerado deixa de valer (ver Avisos operacionais).
 
 ## Instalação via painéis (Dokploy, Coolify, EasyPanel)
 
@@ -91,10 +90,8 @@ que essas ferramentas consomem:
 3. Não esqueça `COMPOSE_PROFILES=runtime,hitl,evaluator` na environment — sem
    ele a stack sobe sem workers e nenhuma execução roda.
 4. Deploy. Não há `build:` no kit — o painel só faz pull das imagens.
-5. **Token do Hatchet** (uma vez): use o terminal de container do painel para
-   rodar os 2 comandos da seção "Token do Hatchet" acima, grave o valor em
-   `HATCHET_CLIENT_TOKEN` na environment e redeploye apenas os 4 serviços
-   `*-worker` (nunca recrie o `hatchet` junto).
+5. **Token do Hatchet**: automático — o serviço `hatchet-token-init` gera e
+   distribui o token no primeiro deploy (nada a fazer no painel).
 
 Notas por ferramenta:
 

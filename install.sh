@@ -3,10 +3,11 @@
 # Uso: ./install.sh            (pergunta o que instalar)
 #      ./install.sh prod       ./install.sh sandbox       ./install.sh both
 #
-# O que faz: gera o .env com segredos reais (openssl), sobe a stack puxando as
-# imagens do Docker Hub e executa o passo pós-boot do token do Hatchet (sem ele
-# os workers ficam reiniciando). Idempotente por instância: se o .env já
-# existe, ele NÃO é sobrescrito (para reinstalar do zero, apague-o antes).
+# O que faz: gera o .env com segredos reais (openssl) e sobe a stack puxando
+# as imagens do Docker Hub. O HATCHET_CLIENT_TOKEN dos workers é bootstrapado
+# automaticamente pelo serviço hatchet-token-init (044/DAI-708) — sem passo
+# manual. Idempotente por instância: se o .env já existe, ele NÃO é
+# sobrescrito (para reinstalar do zero, apague-o antes).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -69,28 +70,6 @@ install_instance() { # $1=prod|sandbox
     echo "── [$1] aguardando Hatchet e Postgres"
     wait_healthy "$envfile" "$compose" postgres
     wait_healthy "$envfile" "$compose" hatchet
-
-    if grep -q '^HATCHET_CLIENT_TOKEN=.\+' "$envfile"; then
-        echo "── [$1] HATCHET_CLIENT_TOKEN já configurado"
-    else
-        echo "── [$1] gerando token do Hatchet (passo único pós-boot)"
-        local tid token
-        tid=$(docker compose --env-file "$envfile" -f "$compose" exec -T postgres \
-            psql -U "$(grep -oP '^POSTGRES_USER=\K.*' "$envfile" || echo agenteos)" -d hatchet \
-            -t -A -c 'SELECT id FROM "Tenant" LIMIT 1;')
-        [ -n "$tid" ] || fail "[$1] tenant do Hatchet não encontrado"
-        token=$(docker compose --env-file "$envfile" -f "$compose" exec -T hatchet \
-            /hatchet-admin token create --config /config --tenant-id "$tid" | tr -d '[:space:]')
-        [ -n "$token" ] || fail "[$1] hatchet-admin token create não retornou token"
-        if grep -q '^HATCHET_CLIENT_TOKEN=' "$envfile"; then
-            sed -i "s|^HATCHET_CLIENT_TOKEN=.*|HATCHET_CLIENT_TOKEN=$token|" "$envfile"
-        else
-            echo "HATCHET_CLIENT_TOKEN=$token" >> "$envfile"
-        fi
-        # --no-deps: recriar o hatchet junto invalidaria o token recém-criado
-        docker compose --env-file "$envfile" -f "$compose" up -d --no-deps \
-            api-gateway-worker agent-runtime-worker hitl-service-worker evaluator-worker
-    fi
     echo "── [$1] OK"
 }
 
