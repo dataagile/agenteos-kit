@@ -320,7 +320,7 @@ services:
     networks:
     - dokploy-network
   db-migrate:
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}db-migrate:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}db-migrate:${IMAGE_TAG:-latest}
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
         POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
@@ -414,7 +414,7 @@ services:
     - channels
   api-gateway:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -463,7 +463,7 @@ services:
     pull_policy: always
   mcp-server:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}mcp-server:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}mcp-server:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -501,7 +501,7 @@ services:
     - ${MCP_PORT:-8100}:8000
   agent-runtime:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -543,7 +543,7 @@ services:
     pull_policy: always
   api-gateway-worker:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
     command:
     - sh
     - -c
@@ -589,7 +589,7 @@ services:
     pull_policy: always
   agent-runtime-worker:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
     command:
     - sh
     - -c
@@ -644,7 +644,7 @@ services:
     pull_policy: always
   data-plane:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}data-plane:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}data-plane:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -675,7 +675,7 @@ services:
     pull_policy: always
   retrieval:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}retrieval:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}retrieval:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -706,7 +706,7 @@ services:
     pull_policy: always
   channels:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}channels:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}channels:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -740,7 +740,7 @@ services:
     pull_policy: always
   hitl-service:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}hitl-service:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
     profiles:
     - hitl
     environment:
@@ -775,7 +775,7 @@ services:
     pull_policy: always
   hitl-service-worker:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}hitl-service:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
     command:
     - sh
     - -c
@@ -823,7 +823,7 @@ services:
     pull_policy: always
   evaluator:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}evaluator:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
     profiles:
     - evaluator
     environment:
@@ -861,7 +861,7 @@ services:
     pull_policy: always
   evaluator-worker:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}evaluator:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
     command:
     - sh
     - -c
@@ -911,7 +911,7 @@ services:
     - dokploy-network
     pull_policy: always
   web:
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}web:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}web:${IMAGE_TAG:-latest}
     command:
     - sh
     - -c
@@ -924,7 +924,7 @@ services:
     pull_policy: always
   platform-console:
     restart: unless-stopped
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}platform-console:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}platform-console:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -967,7 +967,7 @@ services:
     - dokploy-network
     pull_policy: always
   console-web:
-    image: ${IMAGE_PREFIX:-dataagileai/agenteos-}console-web:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}console-web:${IMAGE_TAG:-latest}
     command:
     - sh
     - -c

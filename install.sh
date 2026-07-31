@@ -4,9 +4,10 @@
 #      ./install.sh prod       ./install.sh sandbox       ./install.sh both
 #
 # O que faz: gera o .env com segredos reais (openssl) e sobe a stack puxando
-# as imagens do Docker Hub. O HATCHET_CLIENT_TOKEN dos workers é bootstrapado
-# automaticamente pelo serviço hatchet-token-init (044/DAI-708) — sem passo
-# manual. Idempotente por instância: se o .env já existe, ele NÃO é
+# as imagens do registry privado (docker.dataagile.com.br) — exige `docker login`
+# com a credencial de pull fornecida pela TBC. O HATCHET_CLIENT_TOKEN dos workers
+# é bootstrapado automaticamente pelo serviço hatchet-token-init (044/DAI-708) —
+# sem passo manual. Idempotente por instância: se o .env já existe, ele NÃO é
 # sobrescrito (para reinstalar do zero, apague-o antes).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -17,6 +18,18 @@ command -v docker >/dev/null || fail "docker não encontrado — instale o Docke
 docker compose version >/dev/null 2>&1 || fail "docker compose v2 não encontrado"
 docker info >/dev/null 2>&1 || fail "daemon do Docker inacessível (permissão? serviço parado?)"
 command -v openssl >/dev/null || fail "openssl não encontrado (necessário para gerar segredos)"
+
+# As imagens vivem num registry privado — sem acesso, o `up -d` falharia no pull.
+# `docker manifest inspect` só busca o manifesto (não baixa a imagem): valida o
+# login de forma barata. O prefixo vem do IMAGE_PREFIX do .env.example (acompanha
+# o default do kit; se o operador usa outro registry, ajuste o .env.example antes).
+IMAGE_PREFIX="$(grep -m1 '^IMAGE_PREFIX=' .env.example | cut -d= -f2-)"
+REGISTRY_HOST="${IMAGE_PREFIX%%/*}"
+if ! docker manifest inspect "${IMAGE_PREFIX}db-migrate:latest" >/dev/null 2>&1; then
+    fail "sem acesso ao registry privado ${REGISTRY_HOST}. Rode primeiro:
+    docker login ${REGISTRY_HOST}
+  (usuário e senha de pull fornecidos pela TBC)"
+fi
 
 INSTANCE="${1:-}"
 if [ -z "$INSTANCE" ]; then
