@@ -415,6 +415,12 @@ services:
   api-gateway:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    command:
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package api-gateway uvicorn api_gateway.main:get_app
+      --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -458,6 +464,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
+    volumes:
+    - hatchet_token:/run/hatchet:ro
     networks:
     - dokploy-network
     pull_policy: always
@@ -502,6 +512,12 @@ services:
   agent-runtime:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    command:
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package agent-runtime uvicorn agent_runtime.main:get_app
+      --factory --host 0.0.0.0 --port 8000
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -536,8 +552,11 @@ services:
         condition: service_healthy
       hatchet:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
     volumes:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    - hatchet_token:/run/hatchet:ro
     networks:
     - dokploy-network
     pull_policy: always
@@ -743,6 +762,12 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
     profiles:
     - hitl
+    command:
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package hitl-service uvicorn hitl_service.main:get_app
+      --factory --host 0.0.0.0 --port 8000
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -770,6 +795,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
+    volumes:
+    - hatchet_token:/run/hatchet:ro
     networks:
     - dokploy-network
     pull_policy: always
@@ -826,6 +855,12 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
     profiles:
     - evaluator
+    command:
+    - sh
+    - -c
+    - export HATCHET_CLIENT_TOKEN="$${HATCHET_CLIENT_TOKEN:-$$(cat /run/hatchet/token
+      2>/dev/null)}"; exec uv run --package evaluator uvicorn evaluator.main:get_app
+      --factory --host 0.0.0.0 --port 8000
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -856,6 +891,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      hatchet-token-init:
+        condition: service_completed_successfully
+    volumes:
+    - hatchet_token:/run/hatchet:ro
     networks:
     - dokploy-network
     pull_policy: always
