@@ -178,6 +178,16 @@ e rode `pull && up -d` novamente.
   `mcp-server` vive no volume durável `agent_specs_data` (compartilhado com o
   seed do `db-migrate`). Inclua esse volume na rotina de backup se a autoria
   for valiosa.
+- **Produção (kit do cliente): agente novo chega por contrato, sem pull de
+  imagem** (044-catalogo-hub-spoke-automatico). O `docker-compose.prod.yml`
+  também ganhou o volume `agent_specs_data` — quando o hub cria/atualiza um
+  contrato, o material de execução (spec + templates `.j2`) viaja junto no
+  push e o `api-gateway` grava nesse volume; o `agent-runtime` e o
+  `agent-runtime-worker` leem dali para executar o agente (nó
+  `render_template` incluso). Sem ação do cliente: não precisa de
+  `docker compose pull` nem de kit novo para um produto que o hub acabou de
+  liberar. Inclua esse volume na rotina de backup pela mesma razão do
+  sandbox.
 - **Rate-limit de pull anônimo do Docker Hub**: se `docker compose pull`
   começar a falhar com `429 Too Many Requests`, rode `docker login` (mesmo
   sem conta paga — usuário autenticado tem limite maior que anônimo).

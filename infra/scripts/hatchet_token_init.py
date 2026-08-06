@@ -18,8 +18,14 @@ O cookie do login é domain-bound ao SERVER_URL (ex.: localhost) — chamando
 http://hatchet:8888 o cookiejar padrão o descartaria. Por isso o Set-Cookie
 é capturado e reenviado manualmente como header Cookie, sem urllib.cookiejar.
 
+RN-01: o token da env dos workers tem precedência sobre o arquivo. Quando
+HATCHET_CLIENT_TOKEN já vem preenchido, o bootstrap é dispensável e sai 0 sem
+tentar login — senão uma credencial de admin inválida derruba um deploy que
+nem precisa dela (DAI: api-gateway em Created no sandbox-os, 03-04/08/2026).
+
 Envs:
   HATCHET_API_URL          default http://hatchet:8888
+  HATCHET_CLIENT_TOKEN     token pronto (RN-01) -> no-op, nem tenta login
   HATCHET_ADMIN_EMAIL      obrigatório (fail-closed — RN-03)
   HATCHET_ADMIN_PASSWORD   obrigatório (fail-closed — RN-03)
   TOKEN_PATH               default /run/hatchet/token
@@ -170,13 +176,39 @@ def write_token(token: str) -> None:
         os.close(fd)
 
 
+def _env_token_wins(env_token: str | None, force: bool, now: float) -> bool:
+    """RN-01: token da env dispensa o bootstrap — mas só enquanto ele ainda vale.
+
+    Reusa o mesmo critério do arquivo (RN-02): FORCE, ausente, ilegível ou <30d
+    de validade não dispensa nada. Sem isso um token expirado (ou lixo colado no
+    .env) viraria no-op silencioso e mataria o auto-heal — os serviços leem a env
+    antes do arquivo, então um token morto ali deixa o dispatch mudo sem alarme.
+    """
+    return not _should_regenerate(env_token, force, now)
+
+
 def main() -> int:
+    force = os.environ.get("HATCHET_TOKEN_FORCE") == "1"
+    env_token = os.environ.get("HATCHET_CLIENT_TOKEN")
+    if _env_token_wins(env_token, force, time.time()):
+        print(
+            "hatchet_token_init: HATCHET_CLIENT_TOKEN veio da env e ainda é válido "
+            "(RN-01), bootstrap dispensável (HATCHET_TOKEN_FORCE=1 para gerar mesmo assim)"
+        )
+        return 0
+    if env_token:
+        print(
+            "hatchet_token_init: ATENÇÃO — HATCHET_CLIENT_TOKEN da env está "
+            "expirado/ilegível/perto de vencer. Os serviços leem a env ANTES do "
+            "arquivo: gerar o token abaixo NÃO os cura, atualize a env.",
+            file=sys.stderr,
+        )
+
     email = os.environ.get("HATCHET_ADMIN_EMAIL")
     password = os.environ.get("HATCHET_ADMIN_PASSWORD")
     if not email or not password:
         _fail("envs", "HATCHET_ADMIN_EMAIL/HATCHET_ADMIN_PASSWORD obrigatórios")
 
-    force = os.environ.get("HATCHET_TOKEN_FORCE") == "1"
     existing = _read_existing_token()
     if not _should_regenerate(existing, force, time.time()):
         exp_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_jwt_exp(existing)))
@@ -225,6 +257,14 @@ if __name__ == "__main__":
         assert _should_regenerate(_fake_jwt({"sem_exp": 1}), False, now) is True, "sem claim exp deveria regenerar"
         assert _should_regenerate(futuro, True, now) is True, "FORCE deveria regenerar mesmo com exp futuro"
         assert _should_regenerate(None, False, now) is True, "sem token deveria regenerar"
+
+        assert _env_token_wins(futuro, False, now) is True, "env com token válido dispensa"
+        assert _env_token_wins(perto, False, now) is False, "env com <30d NÃO dispensa"
+        assert _env_token_wins(futuro, True, now) is False, "FORCE ignora o token da env"
+        assert _env_token_wins(None, False, now) is False, "sem token na env, bootstrap roda"
+        assert _env_token_wins("", False, now) is False, "env vazia conta como ausente"
+        assert _env_token_wins("lixo-colado-no-env", False, now) is False, "lixo na env não dispensa"
+        assert _env_token_wins(_fake_jwt({"exp": now - 86400}), False, now) is False, "expirado não dispensa"
 
         print("selftest OK")
         sys.exit(0)

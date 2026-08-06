@@ -176,6 +176,7 @@ services:
     - /hatchet_token_init.py
     environment:
       HATCHET_API_URL: http://hatchet:8888
+      HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_ADMIN_EMAIL: ${HATCHET_ADMIN_EMAIL:-}
       HATCHET_ADMIN_PASSWORD: ${HATCHET_ADMIN_PASSWORD:-}
     volumes:
@@ -457,6 +458,9 @@ services:
       CHANNELS_URL: ${CHANNELS_URL:-http://channels:8000}
       CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       CHANNEL_WEBHOOK_BASE_URL: ${CHANNEL_WEBHOOK_BASE_URL:-}
+      AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -466,8 +470,10 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
+        required: false
     volumes:
     - hatchet_token:/run/hatchet:ro
+    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}:ro
     networks:
     - dokploy-network
     pull_policy: always
@@ -543,7 +549,12 @@ services:
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
     depends_on:
+      hatchet-token-init:
+        condition: service_completed_successfully
+        required: false
       db-migrate:
         condition: service_completed_successfully
       postgres:
@@ -552,8 +563,6 @@ services:
         condition: service_healthy
       hatchet:
         condition: service_healthy
-      hatchet-token-init:
-        condition: service_completed_successfully
     volumes:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     - hatchet_token:/run/hatchet:ro
@@ -797,6 +806,7 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
+        required: false
     volumes:
     - hatchet_token:/run/hatchet:ro
     networks:
@@ -893,6 +903,7 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
+        required: false
     volumes:
     - hatchet_token:/run/hatchet:ro
     networks:
