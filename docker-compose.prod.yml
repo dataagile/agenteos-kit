@@ -611,6 +611,8 @@ services:
       LITELLM_PROXY_URL: ${LITELLM_PROXY_URL:-http://litellm-proxy:4000}
       DATA_PLANE_URL: ${DATA_PLANE_URL:-http://data-plane:8000}
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
     volumes:
     - hatchet_token:/run/hatchet:ro
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
