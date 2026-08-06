@@ -756,8 +756,8 @@ services:
       OTEL_SERVICE_NAME: channels
       SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN required}
       SHORT_LINK_HMAC_SECRET: ${SHORT_LINK_HMAC_SECRET:?SHORT_LINK_HMAC_SECRET required}
-      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
-      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
+      STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
+      STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
     depends_on:
       db-migrate:
         condition: service_completed_successfully
