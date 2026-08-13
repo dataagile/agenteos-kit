@@ -514,7 +514,7 @@ services:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     pull_policy: always
     ports:
-    - ${MCP_PORT:-8100}:8000
+    - ${MCP_PORT:-127.0.0.1:8100}:8000
   agent-runtime:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}

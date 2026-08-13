@@ -50,9 +50,16 @@ docker compose -f docker-compose.sandbox.yml --env-file .env.sandbox pull
 docker compose -f docker-compose.sandbox.yml --env-file .env.sandbox up -d
 ```
 
-O servidor MCP (autoria de agentes via Claude Code/skill) fica em
-`http://<host>:8100/mcp` — habilite com `MCP_ENABLED=true` e preencha
-`MCP_ALLOWED_TENANT_IDS` no `.env.sandbox` antes de usar.
+O servidor MCP (autoria de agentes via Claude Code/skill) **nasce desligado** e a
+porta 8100 fica em loopback — o acesso externo é pela rota `/mcp` do nginx, com TLS
+(`https://<dominio-do-sandbox>/mcp`). Para habilitar, siga a seção "MCP — autoria de
+agentes" do `.env.sandbox.example`: `MCP_ENABLED=true`, `MCP_ALLOWED_TENANT_IDS` com o
+UUID do tenant (existe só APÓS o provisionamento pelo hub), `MCP_ADMIN_TENANT_ID` e
+`MCP_ADMIN_KEY` (chave `keys.admin` emitida via `issue-key` — sem ela a página
+Configurações → Chaves MCP responde erro). Chaves de AUTORIA para desenvolvedores
+usam os 6 scopes `spec.list spec.read spec.node_types spec.validate spec.write
+spec.publish`. Num deploy via painel (Dokploy etc.), essas variáveis devem viver no
+painel — arquivo `.env` editado à mão é regenerado no próximo deploy.
 
 ### Token do Hatchet (automático)
 
