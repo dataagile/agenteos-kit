@@ -106,9 +106,15 @@ services:
   litellm-proxy:
     restart: unless-stopped
     image: ghcr.io/berriai/litellm:main-stable
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY obrigatório}
       REDIS_URL: ${LITELLM_REDIS_URL:-redis://redis:6379/0}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/litellm
+      STORE_MODEL_IN_DB: 'True'
     command:
     - --config
     - /app/config.yaml
@@ -473,7 +479,7 @@ services:
         required: false
     volumes:
     - hatchet_token:/run/hatchet:ro
-    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}:ro
+    - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     networks:
     - dokploy-network
     pull_policy: always
