@@ -102,3 +102,23 @@ groups:
             {{ $value | humanizePercentage }} (limiar: 80%).
             Verificar retenção do Loki e limpeza de imagens Docker antigas.
           runbook_url: "https://github.com/tbc-servicos/AgenteOS/blob/main/infra/runbooks/loki-disk-esgotado.md"
+
+      # ── RedisMemoryHigh (DAI-1116) ───────────────────────────────────────
+      # Uso acima de 70% do teto (maxmemory) por >5min → warning. O guard
+      # `redis_memory_max_bytes > 0` deixa a regra inerte em stack sem teto
+      # (evita divisão por zero e alerta falso em instância antiga).
+      - alert: RedisMemoryHigh
+        expr: >
+          redis_memory_max_bytes > 0
+          and (redis_memory_used_bytes / redis_memory_max_bytes) > 0.70
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis em {{ $labels.instance }} usa {{ $value | humanizePercentage }} do teto"
+          description: >
+            redis_memory_used_bytes está acima de 70% de redis_memory_max_bytes
+            (REDIS_MAXMEMORY) há mais de 5 minutos. Com volatile-lru só chave
+            COM TTL é despejada; se o crescimento vier de chave sem TTL, o Redis
+            passa a recusar escrita ao atingir o teto. Ver DAI-1116/DAI-1117.
+          runbook_url: "https://github.com/tbc-servicos/AgenteOS/blob/main/infra/runbooks/rollback-deploy-prod.md"

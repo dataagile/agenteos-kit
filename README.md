@@ -71,6 +71,14 @@ faltam <30 dias de validade). Se você preferir controlar o token manualmente,
 basta definir `HATCHET_CLIENT_TOKEN` no `.env` — a variável explícita sempre
 vence o arquivo.
 
+> **A senha do admin precisa passar na política do Hatchet**: 8 a 64 caracteres
+> com ao menos uma maiúscula, uma minúscula e um dígito. Uma senha só-hex
+> (`openssl rand -hex 32`) é recusada, o admin não é criado e o
+> `hatchet-token-init` falha com um `HTTP 400` em `/api/v1/users/login` que não
+> diz o motivo — ele está no log do container `hatchet`
+> (`ADMIN_PASSWORD does not meet requirements`). Gerador seguro:
+> `printf 'Ag%s1\n' "$(openssl rand -hex 12)"`.
+
 **Recovery** (só se o container do `hatchet` for recriado sem o volume de
 config — chaves novas invalidam tokens antigos):
 
@@ -201,3 +209,9 @@ e rode `pull && up -d` novamente.
 - **Profile `retrieval` (embeddings/reranker) fora deste kit v1**: esses dois
   serviços não têm imagem publicada (`build:` local no monorepo) — não
   suba o profile `retrieval` a partir deste kit.
+- **Modo demo (`APP_MODE=demo`) não faz parte deste kit público.** É uma
+  terceira instância interna da Data Agile para demonstração comercial
+  (`APP_MODE`, `DEMO_TENANT_SLUG`, `DEMO_FIXTURES_ROOT`), subida via
+  `infra/compose` no monorepo, não pelos `docker-compose.prod.yml`/
+  `docker-compose.sandbox.yml` deste diretório. Detalhe operacional em
+  `.claude/context/deploy-spoke.md` (seção "Modo demo").

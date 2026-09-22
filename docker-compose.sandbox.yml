@@ -4,14 +4,23 @@ x-restart:
   restart: unless-stopped
 x-app-env:
   APP_ENV: ${APP_ENV:-development}
+  APP_MODE: ${APP_MODE:-standard}
+  DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   DEBUG: ${DEBUG:-false}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
   SENTRY_DSN: ${SENTRY_DSN:-}
   SENTRY_RELEASE: ${SOURCE_REF:-}
   SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-    POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+  GLPI_URL: ${GLPI_URL:-}
+  GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+  GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+  GLPI_API_USER: ${GLPI_API_USER:-}
+  GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+  GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+  GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+    POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
   REDIS_URL: redis://redis:6379/0
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
   LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -29,6 +38,7 @@ networks:
   dokploy-network: {}
 volumes:
   agent_specs_data: null
+  chat_uploads: null
   postgres_data: null
   redis_data: null
   qdrant_data: null
@@ -73,8 +83,10 @@ services:
     image: redis:7-alpine
     command:
     - redis-server
+    - --maxmemory
+    - ${REDIS_MAXMEMORY:-256mb}
     - --maxmemory-policy
-    - allkeys-lru
+    - ${REDIS_MAXMEMORY_POLICY:-volatile-lru}
     - --appendonly
     - 'yes'
     volumes:
@@ -331,6 +343,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
         POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      POSTGRES_RUNTIME_USER: ${POSTGRES_RUNTIME_USER:-}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:-}
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
       AGENT_SPECS_SEED_ROOTS: ${AGENT_SPECS_SEED_ROOTS:-/app/packages/agent-specs:/app/vendor/sandbox-agents}
       SECRET_KEY: ${SECRET_KEY:-}
@@ -357,8 +371,8 @@ services:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
     volumes:
     - minio_data:/data
     healthcheck:
@@ -371,6 +385,30 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+    - dokploy-network
+  minio-init:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    entrypoint:
+    - /bin/sh
+    - -c
+    command:
+    - 'mc alias set local http://minio:9000 "$$MC_USER" "$$MC_PASS" &&
+
+      mc mb --ignore-existing "local/$$BUCKET_APPS" &&
+
+      mc mb --ignore-existing "local/$$BUCKET_EVAL"
+
+      '
+    environment:
+      MC_USER: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
+      MC_PASS: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
+      BUCKET_APPS: ${STORAGE_BUCKET:-agenteos}
+      BUCKET_EVAL: ${OBJECT_STORAGE_BUCKET:-roi-reports}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: 'no'
     networks:
     - dokploy-network
   mailpit:
@@ -398,7 +436,23 @@ services:
     environment:
       SERVER_URL: ${EVOLUTION_SERVER_URL:-http://evolution-api:8080}
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-dev-evolution-key}
-      DATABASE_ENABLED: 'false'
+      DATABASE_ENABLED: 'true'
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: agenteos
+      DATABASE_SAVE_DATA_INSTANCE: 'true'
+      DATABASE_SAVE_DATA_NEW_MESSAGE: 'false'
+      DATABASE_SAVE_MESSAGE_UPDATE: 'false'
+      DATABASE_SAVE_DATA_CONTACTS: 'false'
+      DATABASE_SAVE_DATA_CHATS: 'false'
+      DATABASE_SAVE_DATA_HISTORIC: 'false'
+      DATABASE_SAVE_DATA_LABELS: 'false'
+      DATABASE_SAVE_IS_ON_WHATSAPP: 'false'
+      CACHE_REDIS_ENABLED: 'true'
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: 'false'
       WEBHOOK_GLOBAL_URL: ${EVOLUTION_WEBHOOK_URL:-http://channels:8000/webhook/whatsapp/evolution}
       WEBHOOK_GLOBAL_ENABLED: 'true'
       WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: 'false'
@@ -410,7 +464,7 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - wget -q --spider http://localhost:8080/health || exit 1
+      - wget -q --spider http://localhost:8080/ || exit 1
       interval: 20s
       timeout: 5s
       retries: 5
@@ -430,14 +484,23 @@ services:
       --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -446,12 +509,18 @@ services:
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:?INVITE_LINK_BASE required (e.g. https://yourdomain)}
       OTEL_SERVICE_NAME: api-gateway
       AGENT_RUNTIME_URL: http://agent-runtime:8000
+      CHAT_JOB_URL_ALLOWED_HOSTS: ${CHAT_JOB_URL_ALLOWED_HOSTS:-}
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      HATCHET_CLIENT_SERVER_URL: http://hatchet:8888
       APP_MFA_MASTER_KEY: ${APP_MFA_MASTER_KEY:?APP_MFA_MASTER_KEY required}
       JWT_INTERNAL_SECRET: ${JWT_INTERNAL_SECRET:?JWT_INTERNAL_SECRET required}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required}
+      OAUTH_STATE_SECRET: ${OAUTH_STATE_SECRET:?OAUTH_STATE_SECRET required}
+      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-}
+      OAUTH_APP_GOOGLE_CLIENT_ID: ${OAUTH_APP_GOOGLE_CLIENT_ID:-}
+      OAUTH_APP_GOOGLE_CLIENT_SECRET: ${OAUTH_APP_GOOGLE_CLIENT_SECRET:-}
       SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       DATA_PLANE_SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       DATA_PLANE_URL: ${DATA_PLANE_URL:-http://data-plane:8000}
@@ -464,9 +533,12 @@ services:
       CHANNELS_URL: ${CHANNELS_URL:-http://channels:8000}
       CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       CHANNEL_WEBHOOK_BASE_URL: ${CHANNEL_WEBHOOK_BASE_URL:-}
-      CHAT_TOOLS_ENABLED: ${CHAT_TOOLS_ENABLED:-false}
+      SELF_SERVICE_CONTRACTS: ${SELF_SERVICE_CONTRACTS:-false}
+      CHAT_TOOLS_ENABLED: ${CHAT_TOOLS_ENABLED:-true}
       CHAT_TOOLS_MAX_ROUNDS: ${CHAT_TOOLS_MAX_ROUNDS:-4}
       CHAT_TOOLS_TIMEOUT_S: ${CHAT_TOOLS_TIMEOUT_S:-20.0}
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_ALLOWED_TENANT_IDS: ${MCP_ALLOWED_TENANT_IDS:-[]}
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
@@ -483,6 +555,7 @@ services:
     volumes:
     - hatchet_token:/run/hatchet:ro
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+    - chat_uploads:${CHAT_UPLOADS_DIR:-/data/chat-uploads}
     networks:
     - dokploy-network
     pull_policy: always
@@ -491,14 +564,23 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}mcp-server:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -510,6 +592,8 @@ services:
       MCP_ALLOWED_TENANT_IDS: ${MCP_ALLOWED_TENANT_IDS:-[]}
       MCP_TRUSTED_PROXY_HOPS: ${MCP_TRUSTED_PROXY_HOPS:-2}
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
+      AGENT_RUNTIME_URL: http://agent-runtime:8000
+      HITL_SERVICE_URL: ${HITL_SERVICE_URL:-http://hitl-service:8000}
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -535,14 +619,23 @@ services:
       --factory --host 0.0.0.0 --port 8000
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -557,6 +650,7 @@ services:
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      HATCHET_CLIENT_SERVER_URL: http://hatchet:8888
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
       STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-${MINIO_ROOT_USER:-minioadmin}}
       STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-${MINIO_ROOT_PASSWORD:-minioadmin}}
@@ -590,14 +684,23 @@ services:
     - runtime
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -636,14 +739,23 @@ services:
     - runtime
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -657,6 +769,7 @@ services:
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
+      HATCHET_CLIENT_SERVER_URL: http://hatchet:8888
       LITELLM_PROXY_URL: ${LITELLM_PROXY_URL:-http://litellm-proxy:4000}
       DATA_PLANE_URL: ${DATA_PLANE_URL:-http://data-plane:8000}
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
@@ -686,14 +799,23 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}data-plane:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -717,14 +839,23 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}retrieval:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -748,14 +879,23 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}channels:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -790,14 +930,23 @@ services:
       --factory --host 0.0.0.0 --port 8000
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -835,14 +984,23 @@ services:
     - hitl
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -884,14 +1042,23 @@ services:
       --factory --host 0.0.0.0 --port 8000
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -934,14 +1101,23 @@ services:
     - evaluator
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
@@ -988,14 +1164,23 @@ services:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}platform-console:${IMAGE_TAG:-latest}
     environment:
       APP_ENV: ${APP_ENV:-development}
+      APP_MODE: ${APP_MODE:-standard}
+      DEMO_FIXTURES_ROOT: ${DEMO_FIXTURES_ROOT:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DEBUG: ${DEBUG:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_RELEASE: ${SOURCE_REF:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-agenteos}:${POSTGRES_PASSWORD:?defina
-        POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-agenteos}
+      GLPI_URL: ${GLPI_URL:-}
+      GLPI_CLIENT_ID: ${GLPI_CLIENT_ID:-}
+      GLPI_CLIENT_SECRET: ${GLPI_CLIENT_SECRET:-}
+      GLPI_API_USER: ${GLPI_API_USER:-}
+      GLPI_API_PASSWORD: ${GLPI_API_PASSWORD:-}
+      GLPI_V1_APP_TOKEN: ${GLPI_V1_APP_TOKEN:-}
+      GLPI_V1_USER_TOKEN: ${GLPI_V1_USER_TOKEN:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_RUNTIME_USER:-${POSTGRES_USER:-agenteos}}:${POSTGRES_RUNTIME_PASSWORD:-${POSTGRES_PASSWORD:?defina
+        POSTGRES_PASSWORD no .env}}@postgres:5432/${POSTGRES_DB:-agenteos}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY obrigatório}
       LLM_SECRET_ENC_KEY: ${LLM_SECRET_ENC_KEY:-}
