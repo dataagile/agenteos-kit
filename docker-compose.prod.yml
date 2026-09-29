@@ -28,6 +28,7 @@ x-app-env:
   RESEND_API_KEY: ${RESEND_API_KEY:-}
   RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
   INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+  WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
 x-app-deps:
   db-migrate:
     condition: service_completed_successfully
@@ -508,6 +509,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:?INVITE_LINK_BASE required (e.g. https://yourdomain)}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: api-gateway
       AGENT_RUNTIME_URL: http://agent-runtime:8000
       CHAT_JOB_URL_ALLOWED_HOSTS: ${CHAT_JOB_URL_ALLOWED_HOSTS:-}
@@ -589,6 +591,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: agent-runtime
       DATA_PLANE_SERVICE_TOKEN: ${SERVICE_TOKEN}
       CHANNELS_SERVICE_TOKEN: ${SERVICE_TOKEN}
@@ -655,6 +658,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: api-gateway-worker
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
@@ -711,6 +715,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: agent-runtime-worker
       SCHEDULE_DISPATCH_ENABLED: ${SCHEDULE_DISPATCH_ENABLED:-false}
       DATA_PLANE_SERVICE_TOKEN: ${SERVICE_TOKEN}
@@ -773,6 +778,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: data-plane
       SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN required}
       AGENTEOS_DEMO_MOCK_REMESSA: ${AGENTEOS_DEMO_MOCK_REMESSA:-}
@@ -815,6 +821,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: retrieval
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
     depends_on:
@@ -856,6 +863,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: channels
       SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN required}
       SHORT_LINK_HMAC_SECRET: ${SHORT_LINK_HMAC_SECRET:?SHORT_LINK_HMAC_SECRET required}
@@ -910,7 +918,9 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: hitl-service
+      SERVICE_TOKEN: ${SERVICE_TOKEN:-}
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
       HATCHET_CLIENT_HOST_PORT: hatchet:7077
@@ -965,6 +975,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: hitl-service-worker
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
@@ -1024,6 +1035,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: evaluator
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
@@ -1084,6 +1096,7 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-noreply@dataagile.com.br}
       INVITE_LINK_BASE: ${INVITE_LINK_BASE:-http://localhost:8001}
+      WEB_BASE_URL: ${WEB_BASE_URL:-${INVITE_LINK_BASE:-}}
       OTEL_SERVICE_NAME: evaluator-worker
       HATCHET_CLIENT_TOKEN: ${HATCHET_CLIENT_TOKEN:-}
       HATCHET_CLIENT_TLS_STRATEGY: none
