@@ -77,6 +77,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+    - dokploy-network
   redis:
     restart: unless-stopped
     image: redis:7-alpine
@@ -98,6 +100,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+    - dokploy-network
   qdrant:
     restart: unless-stopped
     image: qdrant/qdrant
@@ -110,6 +114,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    networks:
+    - dokploy-network
   litellm-proxy:
     restart: unless-stopped
     image: ghcr.io/berriai/litellm:main-stable
@@ -138,6 +144,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks:
+    - dokploy-network
   hatchet:
     restart: unless-stopped
     image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest@sha256:8bcaa78792a3de898d3f906b2f57c73fb3480e46cbeedc08c014fdf53060bba3
@@ -176,6 +184,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 40s
+    networks:
+    - dokploy-network
     ports:
     - 127.0.0.1:${SANDBOX_HATCHET_PORT:-8889}:8888
   hatchet-token-init:
@@ -195,6 +205,8 @@ services:
       hatchet:
         condition: service_healthy
     restart: 'no'
+    networks:
+    - dokploy-network
   otel-collector:
     restart: unless-stopped
     image: otel/opentelemetry-collector-contrib:latest
@@ -205,6 +217,8 @@ services:
     depends_on:
       loki:
         condition: service_started
+    networks:
+    - dokploy-network
   prometheus:
     restart: unless-stopped
     image: prom/prometheus
@@ -215,6 +229,8 @@ services:
     - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     - prometheus_data:/prometheus
+    networks:
+    - dokploy-network
   loki:
     restart: unless-stopped
     image: grafana/loki:3.7.3
@@ -226,6 +242,8 @@ services:
     volumes:
     - ./infra/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
     - loki_data:/loki
+    networks:
+    - dokploy-network
   grafana:
     restart: unless-stopped
     image: grafana/grafana-oss
@@ -239,9 +257,13 @@ services:
     - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
     - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     - grafana_data:/var/lib/grafana
+    networks:
+    - dokploy-network
   node_exporter:
     restart: unless-stopped
     image: prom/node-exporter
+    networks:
+    - dokploy-network
   postgres_exporter:
     restart: unless-stopped
     image: quay.io/prometheuscommunity/postgres-exporter
@@ -251,6 +273,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+    - dokploy-network
   redis_exporter:
     restart: unless-stopped
     image: oliver006/redis_exporter
@@ -259,6 +283,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    networks:
+    - dokploy-network
   pgbackrest:
     restart: unless-stopped
     image: woblerr/pgbackrest:2.53
@@ -273,6 +299,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+    - dokploy-network
   embeddings:
     restart: unless-stopped
     profiles:
@@ -290,6 +318,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+    networks:
+    - dokploy-network
   reranker:
     restart: unless-stopped
     profiles:
@@ -307,6 +337,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+    networks:
+    - dokploy-network
   db-migrate:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}db-migrate:${IMAGE_TAG:-latest}
     environment:
@@ -333,6 +365,8 @@ services:
     volumes:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     pull_policy: always
+    networks:
+    - dokploy-network
   minio:
     restart: unless-stopped
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
@@ -352,6 +386,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+    - dokploy-network
   minio-init:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     entrypoint:
@@ -374,6 +410,8 @@ services:
       minio:
         condition: service_healthy
     restart: 'no'
+    networks:
+    - dokploy-network
   mailpit:
     restart: unless-stopped
     image: axllent/mailpit:v1.21
@@ -391,6 +429,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    networks:
+    - dokploy-network
   evolution-api:
     restart: unless-stopped
     image: evoapicloud/evolution-api:v2.2.3
@@ -432,6 +472,8 @@ services:
       start_period: 30s
     profiles:
     - channels
+    networks:
+    - dokploy-network
   api-gateway:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
@@ -497,6 +539,7 @@ services:
       CHAT_TOOLS_ENABLED: ${CHAT_TOOLS_ENABLED:-true}
       CHAT_TOOLS_MAX_ROUNDS: ${CHAT_TOOLS_MAX_ROUNDS:-4}
       CHAT_TOOLS_TIMEOUT_S: ${CHAT_TOOLS_TIMEOUT_S:-20.0}
+      MARKETPLACE_ENABLED: ${MARKETPLACE_ENABLED:-false}
       MCP_ENABLED: ${MCP_ENABLED:-false}
       MCP_ALLOWED_TENANT_IDS: ${MCP_ALLOWED_TENANT_IDS:-[]}
       AGENT_SPECS_STORE_ROOT: ${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
@@ -517,6 +560,8 @@ services:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     - chat_uploads:${CHAT_UPLOADS_DIR:-/data/chat-uploads}
     pull_policy: always
+    networks:
+    - dokploy-network
   mcp-server:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}mcp-server:${IMAGE_TAG:-latest}
@@ -565,6 +610,8 @@ services:
     volumes:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     pull_policy: always
+    networks:
+    - dokploy-network
     ports:
     - ${MCP_PORT:-127.0.0.1:8100}:8000
   agent-runtime:
@@ -630,6 +677,8 @@ services:
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     - hatchet_token:/run/hatchet:ro
     pull_policy: always
+    networks:
+    - dokploy-network
   api-gateway-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
@@ -684,6 +733,8 @@ services:
     healthcheck:
       disable: true
     pull_policy: always
+    networks:
+    - dokploy-network
   agent-runtime-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
@@ -750,6 +801,8 @@ services:
     healthcheck:
       disable: true
     pull_policy: always
+    networks:
+    - dokploy-network
   data-plane:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}data-plane:${IMAGE_TAG:-latest}
@@ -789,6 +842,8 @@ services:
       redis:
         condition: service_healthy
     pull_policy: always
+    networks:
+    - dokploy-network
   retrieval:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}retrieval:${IMAGE_TAG:-latest}
@@ -828,6 +883,8 @@ services:
       redis:
         condition: service_healthy
     pull_policy: always
+    networks:
+    - dokploy-network
   channels:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}channels:${IMAGE_TAG:-latest}
@@ -870,6 +927,8 @@ services:
       redis:
         condition: service_healthy
     pull_policy: always
+    networks:
+    - dokploy-network
   hitl-service:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
@@ -925,6 +984,8 @@ services:
     volumes:
     - hatchet_token:/run/hatchet:ro
     pull_policy: always
+    networks:
+    - dokploy-network
   hitl-service-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
@@ -981,6 +1042,8 @@ services:
     healthcheck:
       disable: true
     pull_policy: always
+    networks:
+    - dokploy-network
   evaluator:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
@@ -1038,6 +1101,8 @@ services:
     volumes:
     - hatchet_token:/run/hatchet:ro
     pull_policy: always
+    networks:
+    - dokploy-network
   evaluator-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
@@ -1097,6 +1162,8 @@ services:
       hatchet-token-init:
         condition: service_completed_successfully
     pull_policy: always
+    networks:
+    - dokploy-network
   web:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}web:${IMAGE_TAG:-latest}
     command:
@@ -1107,6 +1174,8 @@ services:
     - web_dist:/srv/web
     restart: 'no'
     pull_policy: always
+    networks:
+    - dokploy-network
   platform-console:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}platform-console:${IMAGE_TAG:-latest}
@@ -1159,6 +1228,8 @@ services:
       redis:
         condition: service_healthy
     pull_policy: always
+    networks:
+    - dokploy-network
   console-web:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}console-web:${IMAGE_TAG:-latest}
     command:
@@ -1169,6 +1240,8 @@ services:
     - console_web_dist:/srv/console-web
     restart: 'no'
     pull_policy: always
+    networks:
+    - dokploy-network
   nginx:
     restart: unless-stopped
     image: nginx:alpine
@@ -1186,7 +1259,6 @@ services:
     - web_dist:/usr/share/nginx/html:ro
     - console_web_dist:/usr/share/nginx/console:ro
     networks:
-    - default
     - dokploy-network
     ports:
     - ${SANDBOX_HTTP_PORT:-8090}:80
