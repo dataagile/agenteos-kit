@@ -36,8 +36,6 @@ x-app-deps:
     condition: service_healthy
   redis:
     condition: service_healthy
-networks:
-  dokploy-network: {}
 volumes:
   chat_uploads: null
   postgres_data: null
@@ -77,8 +75,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    networks:
-    - dokploy-network
   redis:
     restart: unless-stopped
     image: redis:7-alpine
@@ -100,8 +96,6 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    networks:
-    - dokploy-network
   qdrant:
     restart: unless-stopped
     image: qdrant/qdrant
@@ -114,8 +108,6 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-    networks:
-    - dokploy-network
   litellm-proxy:
     restart: unless-stopped
     image: ghcr.io/berriai/litellm:main-stable
@@ -144,8 +136,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    networks:
-    - dokploy-network
   hatchet:
     restart: unless-stopped
     image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:latest@sha256:8bcaa78792a3de898d3f906b2f57c73fb3480e46cbeedc08c014fdf53060bba3
@@ -186,8 +176,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 40s
-    networks:
-    - dokploy-network
   hatchet-token-init:
     image: python:3.12-slim
     command:
@@ -205,8 +193,6 @@ services:
       hatchet:
         condition: service_healthy
     restart: 'no'
-    networks:
-    - dokploy-network
   otel-collector:
     restart: unless-stopped
     image: otel/opentelemetry-collector-contrib:latest
@@ -217,8 +203,6 @@ services:
     depends_on:
       loki:
         condition: service_started
-    networks:
-    - dokploy-network
   prometheus:
     restart: unless-stopped
     image: prom/prometheus
@@ -229,8 +213,6 @@ services:
     - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
     - prometheus_data:/prometheus
-    networks:
-    - dokploy-network
   loki:
     restart: unless-stopped
     image: grafana/loki:3.7.3
@@ -242,8 +224,6 @@ services:
     volumes:
     - ./infra/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
     - loki_data:/loki
-    networks:
-    - dokploy-network
   grafana:
     restart: unless-stopped
     image: grafana/grafana-oss
@@ -257,13 +237,9 @@ services:
     - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
     - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     - grafana_data:/var/lib/grafana
-    networks:
-    - dokploy-network
   node_exporter:
     restart: unless-stopped
     image: prom/node-exporter
-    networks:
-    - dokploy-network
   postgres_exporter:
     restart: unless-stopped
     image: quay.io/prometheuscommunity/postgres-exporter
@@ -273,8 +249,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-    - dokploy-network
   redis_exporter:
     restart: unless-stopped
     image: oliver006/redis_exporter
@@ -283,8 +257,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    networks:
-    - dokploy-network
   pgbackrest:
     restart: unless-stopped
     image: woblerr/pgbackrest:2.53
@@ -299,8 +271,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-    - dokploy-network
   embeddings:
     restart: unless-stopped
     profiles:
@@ -318,8 +288,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    networks:
-    - dokploy-network
   reranker:
     restart: unless-stopped
     profiles:
@@ -337,8 +305,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    networks:
-    - dokploy-network
   db-migrate:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}db-migrate:${IMAGE_TAG:-latest}
     environment:
@@ -364,8 +330,6 @@ services:
       postgres:
         condition: service_healthy
     restart: 'no'
-    networks:
-    - dokploy-network
     pull_policy: always
   minio:
     restart: unless-stopped
@@ -386,8 +350,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    networks:
-    - dokploy-network
   minio-init:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     entrypoint:
@@ -410,8 +372,6 @@ services:
       minio:
         condition: service_healthy
     restart: 'no'
-    networks:
-    - dokploy-network
   mailpit:
     restart: unless-stopped
     image: axllent/mailpit:v1.21
@@ -429,8 +389,6 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
-    networks:
-    - dokploy-network
   evolution-api:
     restart: unless-stopped
     image: evoapicloud/evolution-api:v2.2.3
@@ -470,8 +428,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    networks:
-    - dokploy-network
     profiles:
     - channels
   api-gateway:
@@ -554,8 +510,6 @@ services:
     - hatchet_token:/run/hatchet:ro
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
     - chat_uploads:${CHAT_UPLOADS_DIR:-/data/chat-uploads}
-    networks:
-    - dokploy-network
     pull_policy: always
   agent-runtime:
     restart: unless-stopped
@@ -620,8 +574,6 @@ services:
     volumes:
     - hatchet_token:/run/hatchet:ro
     - agent_specs_data:${AGENT_SPECS_STORE_ROOT:-/var/lib/agenteos/specs}
-    networks:
-    - dokploy-network
     pull_policy: always
   api-gateway-worker:
     restart: unless-stopped
@@ -675,8 +627,6 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
-    networks:
-    - dokploy-network
     healthcheck:
       disable: true
     pull_policy: always
@@ -745,8 +695,6 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
-    networks:
-    - dokploy-network
     healthcheck:
       disable: true
     pull_policy: always
@@ -790,8 +738,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-    - dokploy-network
     pull_policy: always
   retrieval:
     restart: unless-stopped
@@ -832,8 +778,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-    - dokploy-network
     pull_policy: always
   channels:
     restart: unless-stopped
@@ -879,8 +823,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-    - dokploy-network
     pull_policy: always
   hitl-service:
     restart: unless-stopped
@@ -937,8 +879,6 @@ services:
         required: false
     volumes:
     - hatchet_token:/run/hatchet:ro
-    networks:
-    - dokploy-network
     pull_policy: always
   hitl-service-worker:
     restart: unless-stopped
@@ -994,8 +934,6 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
-    networks:
-    - dokploy-network
     healthcheck:
       disable: true
     pull_policy: always
@@ -1056,8 +994,6 @@ services:
         required: false
     volumes:
     - hatchet_token:/run/hatchet:ro
-    networks:
-    - dokploy-network
     pull_policy: always
   evaluator-worker:
     restart: unless-stopped
@@ -1118,8 +1054,6 @@ services:
         condition: service_healthy
       hatchet-token-init:
         condition: service_completed_successfully
-    networks:
-    - dokploy-network
     pull_policy: always
   web:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}web:${IMAGE_TAG:-latest}
@@ -1130,8 +1064,6 @@ services:
     volumes:
     - web_dist:/srv/web
     restart: 'no'
-    networks:
-    - dokploy-network
     pull_policy: always
   nginx:
     restart: unless-stopped
@@ -1142,7 +1074,5 @@ services:
     volumes:
     - ./infra/nginx/nginx.spoke.conf:/etc/nginx/nginx.conf:ro
     - web_dist:/usr/share/nginx/html:ro
-    networks:
-    - dokploy-network
     ports:
     - ${HTTP_PORT:-80}:80
