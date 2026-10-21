@@ -305,6 +305,23 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+  arquiteto-service:
+    restart: unless-stopped
+    image: ${ARQUITETO_SERVICE_IMAGE:-docker.dataagile.com.br/agenteos/arquiteto-service}:${ARQUITETO_SERVICE_TAG:-0.16.0}
+    profiles:
+    - arquiteto
+    environment:
+      SB_AUTH_TOKEN: ${ARQUITETO_SERVICE_TOKEN:-}
+    mem_limit: 512m
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c "import urllib.request; urllib.request.urlopen('http://localhost:9099/health')"
+        || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
   db-migrate:
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}db-migrate:${IMAGE_TAG:-latest}
     environment:
