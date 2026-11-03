@@ -433,6 +433,7 @@ services:
   api-gateway:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    init: true
     command:
     - sh
     - -c
@@ -526,6 +527,7 @@ services:
   mcp-server:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}mcp-server:${IMAGE_TAG:-latest}
+    init: true
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_MODE: ${APP_MODE:-standard}
@@ -576,6 +578,7 @@ services:
   agent-runtime:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    init: true
     command:
     - sh
     - -c
@@ -641,6 +644,7 @@ services:
   api-gateway-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}api-gateway:${IMAGE_TAG:-latest}
+    init: true
     command:
     - sh
     - -c
@@ -695,6 +699,7 @@ services:
   agent-runtime-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}agent-runtime:${IMAGE_TAG:-latest}
+    init: true
     command:
     - sh
     - -c
@@ -764,6 +769,7 @@ services:
   data-plane:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}data-plane:${IMAGE_TAG:-latest}
+    init: true
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_MODE: ${APP_MODE:-standard}
@@ -805,6 +811,7 @@ services:
   retrieval:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}retrieval:${IMAGE_TAG:-latest}
+    init: true
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_MODE: ${APP_MODE:-standard}
@@ -844,6 +851,7 @@ services:
   channels:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}channels:${IMAGE_TAG:-latest}
+    init: true
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_MODE: ${APP_MODE:-standard}
@@ -888,6 +896,7 @@ services:
   hitl-service:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
+    init: true
     profiles:
     - hitl
     command:
@@ -943,6 +952,7 @@ services:
   hitl-service-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}hitl-service:${IMAGE_TAG:-latest}
+    init: true
     command:
     - sh
     - -c
@@ -999,6 +1009,7 @@ services:
   evaluator:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
+    init: true
     profiles:
     - evaluator
     command:
@@ -1056,6 +1067,7 @@ services:
   evaluator-worker:
     restart: unless-stopped
     image: ${IMAGE_PREFIX:-docker.dataagile.com.br/agenteos/agenteos-}evaluator:${IMAGE_TAG:-latest}
+    init: true
     command:
     - sh
     - -c
